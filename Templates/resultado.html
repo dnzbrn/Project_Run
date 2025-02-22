@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Biblioteca jsPDF para gerar PDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <title>{{ titulo }}</title>
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col items-center">
+  <!-- Cabeçalho com o nome do treino -->
+  <header class="bg-white w-full shadow-lg p-6 text-center">
+    <h1 class="text-4xl font-extrabold text-blue-700">{{ titulo }}</h1>
+  </header>
+
+  <!-- Conteúdo principal -->
+  <main class="flex-grow container mx-auto py-12">
+    <div class="bg-white p-8 rounded-xl shadow-2xl">
+      <h2 class="text-3xl font-semibold text-gray-800 mb-6 text-center">
+        Seu Treino Personalizado
+      </h2>
+      <pre id="planoContent" class="bg-gray-50 p-6 rounded-lg border border-gray-300 whitespace-pre-wrap text-gray-800 text-base">
+{{ plano }}
+      </pre>
+
+      <!-- Botões de ação: Voltar e Compartilhar -->
+      <div class="mt-8 flex justify-center gap-8">
+        <a href="/" class="inline-block bg-gray-600 text-white font-bold py-3 px-8 rounded-full hover:bg-gray-700 transition duration-300 shadow-lg">
+          Voltar
+        </a>
+        <button onclick="toggleShareModal()" class="inline-block bg-blue-600 text-white font-bold py-3 px-8 rounded-full hover:bg-blue-700 transition duration-300 shadow-lg">
+          Compartilhar
+        </button>
+      </div>
+    </div>
+  </main>
+
+  <!-- Rodapé -->
+  <footer class="bg-gray-200 w-full py-4 text-center">
+    <p class="text-sm text-gray-700">&copy; 2025 Sua Marca. Todos os direitos reservados.</p>
+  </footer>
+
+  <!-- Modal de Compartilhar -->
+  <div id="shareModal" class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 hidden">
+    <div class="bg-white rounded-xl shadow-2xl p-8 w-80">
+      <h2 class="text-2xl font-bold mb-6 text-center">Compartilhar</h2>
+      <div class="flex flex-col gap-4">
+        <!-- Opção WhatsApp -->
+        <a id="whatsappLink" href="#" target="_blank" class="bg-teal-600 text-white font-bold py-3 px-6 rounded-full text-center hover:bg-teal-700 transition duration-300 shadow-lg">
+          Enviar por WhatsApp
+        </a>
+        <!-- Opção Baixar PDF -->
+        <button onclick="downloadPDF()" class="bg-red-600 text-white font-bold py-3 px-6 rounded-full hover:bg-red-700 transition duration-300 shadow-lg">
+          Baixar PDF
+        </button>
+        <!-- Opção Enviar por E-mail -->
+        <button onclick="toggleEmailForm()" class="bg-green-600 text-white font-bold py-3 px-6 rounded-full hover:bg-green-700 transition duration-300 shadow-lg">
+          Enviar por E-mail
+        </button>
+        <!-- Formulário para inserir e-mail -->
+        <div id="emailForm" class="hidden flex flex-col gap-4">
+          <input type="email" id="recipientEmail" placeholder="Digite seu e-mail" class="border p-3 rounded-lg" />
+          <button onclick="sendEmailPDF()" class="bg-green-600 text-white font-bold py-3 px-6 rounded-full hover:bg-green-700 transition duration-300 shadow-lg">
+            Enviar E-mail
+          </button>
+        </div>
+      </div>
+      <button onclick="toggleShareModal()" class="mt-6 w-full bg-gray-500 text-white font-bold py-3 px-6 rounded-full hover:bg-gray-600 transition duration-300 shadow-lg">
+        Fechar
+      </button>
+    </div>
+  </div>
+
+  <script>
+    // Alterna a exibição do modal de compartilhar
+    function toggleShareModal() {
+      const modal = document.getElementById('shareModal');
+      modal.classList.toggle('hidden');
+      // Ao fechar o modal, também oculta o formulário de e-mail, se estiver aberto
+      document.getElementById('emailForm').classList.add('hidden');
+    }
+
+    // Alterna o formulário de e-mail dentro do modal
+    function toggleEmailForm() {
+      const emailForm = document.getElementById('emailForm');
+      emailForm.classList.toggle('hidden');
+    }
+
+    // Atualiza o link do WhatsApp com o conteúdo do plano e mensagem personalizada
+    window.addEventListener('DOMContentLoaded', () => {
+      const plano = document.getElementById('planoContent').innerText;
+      const titulo = document.title;
+      const whatsappMessage = "Parabéns por cuidar da sua saúde! Aqui está o seu plano de treino:\n\n" + plano;
+      const encodedWhatsappMessage = encodeURIComponent(whatsappMessage);
+      const whatsappLink = document.getElementById('whatsappLink');
+      whatsappLink.href = `https://api.whatsapp.com/send?text=${encodedWhatsappMessage}`;
+    });
+
+    // Função para gerar e baixar o PDF com nome personalizado
+    function downloadPDF() {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF('p', 'mm', 'a4');
+      const content = document.getElementById('planoContent').innerText;
+      const lines = doc.splitTextToSize(content, 180);
+      let y = 10;
+      const lineHeight = 10;
+      lines.forEach(line => {
+        if (y > 280) {
+          doc.addPage();
+          y = 10;
+        }
+        doc.text(line, 10, y);
+        y += lineHeight;
+      });
+      // Define o nome do arquivo com base no tipo de treino e data atual
+      let trainingType = "";
+      const titulo = document.title.toLowerCase();
+      if (titulo.includes("corrida")) {
+        trainingType = "TREINO_CORRIDA";
+      } else if (titulo.includes("pace")) {
+        trainingType = "TREINO_PACE";
+      } else {
+        trainingType = "TREINO";
+      }
+      const today = new Date().toISOString().slice(0,10).replace(/-/g, '');
+      const filename = `${today}_${trainingType}.pdf`;
+      doc.save(filename);
+    }
+
+    // Função para gerar o PDF e enviá-lo por e-mail via AJAX
+    async function sendEmailPDF() {
+      const email = document.getElementById('recipientEmail').value;
+      if (!email) {
+        alert('Por favor, insira um e-mail.');
+        return;
+      }
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF('p', 'mm', 'a4');
+      const content = document.getElementById('planoContent').innerText;
+      const lines = doc.splitTextToSize(content, 180);
+      let y = 10;
+      const lineHeight = 10;
+      lines.forEach(line => {
+        if (y > 280) {
+          doc.addPage();
+          y = 10;
+        }
+        doc.text(line, 10, y);
+        y += lineHeight;
+      });
+      // Gera o PDF como Data URI
+      const dataUri = doc.output('datauristring');
+      
+      // Envia o PDF para o backend para envio por e-mail
+      try {
+        const response = await fetch('/send_email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ recipient: email, pdfData: dataUri })
+        });
+        const result = await response.json();
+        if (result.status === "success") {
+          alert('E-mail enviado com sucesso!');
+          // Opcional: limpar o campo e fechar o formulário
+          document.getElementById('recipientEmail').value = '';
+          document.getElementById('emailForm').classList.add('hidden');
+        } else {
+          alert('Erro ao enviar e-mail: ' + result.message);
+        }
+      } catch (error) {
+        alert('Erro: ' + error.message);
+      }
+    }
+  </script>
+</body>
+</html>

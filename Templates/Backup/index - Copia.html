@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mercado Livre Keywords</title>
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            padding-top: 50px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="mb-4">Mercado Livre Keywords</h1>
+        <form id="search-form" class="mb-4">
+            <div class="form-group">
+                <label for="category">Categoria:</label>
+                <input type="text" class="form-control" id="category" required>
+            </div>
+            <div class="form-group">
+                <label for="subcategory">Subcategoria:</label>
+                <input type="text" class="form-control" id="subcategory">
+            </div>
+            <button type="submit" class="btn btn-primary">Buscar Palavras-chave</button>
+        </form>
+        <div id="keywords">
+            <h2>Principais Palavras-chave</h2>
+            <ul id="keywords-list" class="list-group">
+            </ul>
+        </div>
+        <div id="error-message" class="alert alert-danger" role="alert" style="display: none;">
+            Erro ao buscar palavras-chave. Por favor, tente novamente.
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('search-form').addEventListener('submit', async function(event) {
+            event.preventDefault();
+            const category = document.getElementById('category').value;
+            const subcategory = document.getElementById('subcategory').value;
+            const keywordsList = document.getElementById('keywords-list');
+            const errorMessage = document.getElementById('error-message');
+
+            try {
+                const response = await fetch(`/keywords?category=${category}&subcategory=${subcategory}`);
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                const keywords = await response.json();
+
+                console.log('Keywords:', keywords);  // Log dos dados recebidos
+
+                keywordsList.innerHTML = '';
+                keywords.forEach(keyword => {
+                    const listItem = document.createElement('li');
+                    listItem.className = 'list-group-item';
+                    listItem.textContent = `${keyword[0]}: ${keyword[1]}`;
+                    keywordsList.appendChild(listItem);
+                });
+                errorMessage.style.display = 'none';  // Ocultar mensagem de erro
+            } catch (error) {
+                console.error('Error fetching keywords:', error);
+                errorMessage.style.display = 'block';  // Mostrar mensagem de erro
+            }
+        });
+    </script>
+</body>
+</html>
