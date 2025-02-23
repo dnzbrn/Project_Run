@@ -171,5 +171,7 @@ def send_email():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+# 🚀 Inicia o servidor Flask na porta correta para o Railway
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 8080))  # Usa a porta dinâmica do Railway
+    app.run(debug=True, host="0.0.0.0", port=port)
