@@ -25,6 +25,9 @@ app.secret_key = "super_secret_key"  # Necessário para usar session
 
 # Configuração da API do OpenAI
 openai.api_key = os.getenv("OPENAI_API_KEY")  # Use variáveis de ambiente para segredos
+# Criar um cliente OpenAI usando sua API Key (que já está configurada no Railway)
+client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
 
 # Disclaimer a ser incluído no início do plano
 DISCLAIMER = (
@@ -36,16 +39,16 @@ DISCLAIMER = (
 # Função para gerar um plano no OpenAI
 def gerar_plano(prompt):
     try:
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "Você é um assistente especializado em criar planos de treino para corrida."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.5  # Temperatura reduzida para respostas mais objetivas
+            temperature=0.5
         )
-        return response["choices"][0]["message"]["content"]
-    except OpenAIError as e:  # Agora o erro é tratado corretamente
+        return response.choices[0].message.content  # Ajuste para nova estrutura de resposta
+    except openai.OpenAIError as e:
         return f"Erro ao acessar a API OpenAI: {str(e)}"
 
 # Rota da página principal (Landing Page)
