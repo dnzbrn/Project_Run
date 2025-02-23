@@ -6,8 +6,19 @@ import smtplib
 from email.message import EmailMessage
 from datetime import datetime
 
+# Listar arquivos no Railway para depuração
+print("\n📂 Listando arquivos disponíveis no Railway:")
+
+for root, dirs, files in os.walk(os.getcwd()):
+    print(f"📁 Diretório: {root}")
+    for filename in files:
+        print(f"  - {filename}")
+
+print("✅ Verificação concluída. Se 'landing.html' não aparecer, ele não foi enviado no deploy.")
+
+
 # Configuração do Flask
-template_dir = os.path.abspath(r"C:\Users\brndi\Documents\Templates")
+template_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Templates")
 app = Flask(__name__, template_folder=template_dir)
 app.secret_key = "super_secret_key"  # Necessário para usar session
 
