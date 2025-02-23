@@ -1,4 +1,5 @@
 from flask import Flask, request, render_template, redirect, url_for, session, jsonify
+from openai import OpenAIError
 import os
 import openai
 import base64
@@ -44,7 +45,7 @@ def gerar_plano(prompt):
             temperature=0.5  # Temperatura reduzida para respostas mais objetivas
         )
         return response["choices"][0]["message"]["content"]
-    except openai.error.OpenAIError as e:
+    except OpenAIError as e:  # Agora o erro é tratado corretamente
         return f"Erro ao acessar a API OpenAI: {str(e)}"
 
 # Rota da página principal (Landing Page)
