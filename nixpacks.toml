@@ -1,0 +1,12 @@
+[phases.setup]
+nixPkgs = ["python39"]  # Use a versão do Python que você precisa
+
+[phases.build]
+commands = [
+  "pip install -r requirements.txt"
+]
+
+[phases.start]
+commands = [
+  "gunicorn app:app"  # Substitua "app:app" pelo módulo e aplicação do seu projeto
+]
