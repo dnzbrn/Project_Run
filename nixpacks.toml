@@ -8,5 +8,5 @@ commands = [
 
 [phases.start]
 commands = [
-  "gunicorn app:app"  # Substitua "app:app" pelo módulo e aplicação do seu projeto
+  "gunicorn run.py"  # Substitua "app:app" pelo módulo e aplicação do seu projeto
 ]
