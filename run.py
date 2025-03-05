@@ -81,26 +81,30 @@ def registrar_geracao(email, plano):
         text("SELECT * FROM usuarios WHERE email = :email"),  # Use text() aqui
         {"email": email}
     ).fetchone()
+
     if not usuario:
-        # Cria um novo usuário
-        db.execute(
+        # Cria um novo usuário e retorna o ID
+        result = db.execute(
             text("""
                 INSERT INTO usuarios (email, plano, data_inscricao, ultima_geracao)
                 VALUES (:email, :plano, :data_inscricao, :ultima_geracao)
+                RETURNING id  # Retorna o ID do usuário criado
             """),
             {"email": email, "plano": plano, "data_inscricao": hoje, "ultima_geracao": hoje},
         )
+        usuario_id = result.fetchone()["id"]  # Obtém o ID do usuário criado
     else:
         # Atualiza a última geração
         db.execute(
             text("UPDATE usuarios SET ultima_geracao = :ultima_geracao WHERE email = :email"),
             {"ultima_geracao": hoje, "email": email},
         )
+        usuario_id = usuario["id"]  # Usa o ID do usuário existente
 
     # Registra a geração na tabela de gerações
     db.execute(
         text("INSERT INTO geracoes (usuario_id, data_geracao) VALUES (:usuario_id, :data_geracao)"),
-        {"usuario_id": usuario["id"], "data_geracao": hoje},
+        {"usuario_id": usuario_id, "data_geracao": hoje},
     )
     db.commit()
 
