@@ -1,10 +1,11 @@
-from flask import Flask, request, render_template, redirect, url_for, session, jsonify, g
+from flask import Flask, request, render_template, redirect, url_for, session, jsonify
 import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import scoped_session, sessionmaker
-from datetime import datetime, timedelta
+from datetime import datetime
 import hmac
 import hashlib
+import openai  # Importação da biblioteca da OpenAI
 
 # Configuração do Flask
 template_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Templates")
@@ -19,6 +20,12 @@ db = scoped_session(sessionmaker(bind=engine))
 # Configuração do Mercado Pago
 MERCADO_PAGO_ACCESS_TOKEN = os.getenv("MERCADO_PAGO_ACCESS_TOKEN")
 MERCADO_PAGO_WEBHOOK_SECRET = os.getenv("MERCADO_PAGO_WEBHOOK_SECRET")
+
+# Configuração da OpenAI
+openai.api_key = os.getenv("OPENAI_API_KEY")  # Chave da API da OpenAI
+
+# Variável de disclaimer
+DISCLAIMER = "Este plano é gerado automaticamente. Consulte um profissional para ajustes personalizados.\n\n"
 
 # Função para conectar ao banco de dados
 def get_db():
@@ -88,6 +95,26 @@ def registrar_geracao(email, plano):
     )
     db.commit()
 
+# Função para gerar o plano de treino usando a API da OpenAI
+def gerar_plano_openai(prompt):
+    """
+    Gera um plano de treino usando a API da OpenAI.
+    """
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-4",  # Ou "gpt-3.5-turbo" para um modelo mais rápido
+            messages=[
+                {"role": "system", "content": "Você é um treinador de corrida experiente."},
+                {"role": "user", "content": prompt},
+            ],
+            max_tokens=1000,  # Ajuste conforme necessário
+            temperature=0.7,  # Controla a criatividade da resposta
+        )
+        return response.choices[0].message["content"].strip()
+    except Exception as e:
+        print(f"Erro ao gerar plano com OpenAI: {e}")
+        return "Erro ao gerar o plano. Tente novamente mais tarde."
+
 # Rota da página principal (Landing Page)
 @app.route("/")
 def landing():
@@ -104,7 +131,7 @@ def generate():
     dados_usuario = request.form
 
     # Verifica se todos os campos necessários foram enviados
-    required_fields = ["objetivo", "tempo_melhoria", "nivel", "dias", "tempo", "email", "plano"]
+    required_fields = ["email", "plano", "objetivo", "tempo_melhoria", "nivel", "dias", "tempo"]
     if not all(field in dados_usuario for field in required_fields):
         return "Dados do formulário incompletos.", 400
 
@@ -115,7 +142,7 @@ def generate():
     if not pode_gerar_plano(email, plano):
         return "Você já gerou um plano gratuito este mês. Atualize para o plano anual para gerar mais planos.", 400
 
-    # Gera o plano
+    # Gera o plano de treino
     prompt = f"""
 Crie um plano detalhado de corrida para atingir o objetivo de {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']}:
 - Nível: {dados_usuario['nivel']}
@@ -129,12 +156,52 @@ Para cada treino, forneça:
 
 Estruture o plano de forma semanal, listando os treinos por dia.
     """
-    plano_gerado = gerar_plano(prompt)
+    plano_gerado = gerar_plano_openai(prompt)
 
     # Registra a geração do plano
     registrar_geracao(email, plano)
 
     session["titulo"] = "Plano de Corrida"
+    session["plano"] = DISCLAIMER + plano_gerado
+    return redirect(url_for("resultado"))
+
+# Processa o formulário de PACE
+@app.route("/generatePace", methods=["POST"])
+def generatePace():
+    dados_usuario = request.form
+
+    # Verifica se todos os campos necessários foram enviados
+    required_fields = ["email", "plano", "objetivo", "tempo_melhoria", "nivel", "dias", "tempo"]
+    if not all(field in dados_usuario for field in required_fields):
+        return "Dados do formulário incompletos.", 400
+
+    email = dados_usuario["email"]
+    plano = dados_usuario["plano"]
+
+    # Verifica se o usuário pode gerar um plano
+    if not pode_gerar_plano(email, plano):
+        return "Você já gerou um plano gratuito este mês. Atualize para o plano anual para gerar mais planos.", 400
+
+    # Gera o plano de pace
+    prompt = f"""
+Crie um plano detalhado para melhorar o pace de {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']}:
+- Nível: {dados_usuario['nivel']}
+- Dias disponíveis: {dados_usuario['dias']}
+- Tempo diário: {dados_usuario['tempo']} minutos.
+
+Para cada treino, forneça:
+- Tipo de exercício (ex.: corrida leve, intervalados, tiros, etc.);
+- Pace (ritmo de corrida) sugerido;
+- Tempo de duração do treino.
+
+Estruture o plano de forma semanal, listando os treinos por dia.
+    """
+    plano_gerado = gerar_plano_openai(prompt)
+
+    # Registra a geração do plano
+    registrar_geracao(email, plano)
+
+    session["titulo"] = "Plano de Pace"
     session["plano"] = DISCLAIMER + plano_gerado
     return redirect(url_for("resultado"))
 
