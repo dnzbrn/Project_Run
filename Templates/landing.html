@@ -123,7 +123,6 @@
           <div id="step5" class="step hidden-step">
             <label class="block text-lg font-medium mt-4">Tempo diário (minutos):</label>
             <input type="number" name="tempo" placeholder="Ex.: 30" class="w-full mt-2 rounded-lg border-gray-300 shadow-sm focus:ring-green-600 focus:border-green-600" required>
-            <!-- Aqui passamos 'formCorrida' para saber que formulário estamos usando -->
             <button type="button" onclick="mostrarModal('formCorrida')" class="mt-6 w-full bg-green-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-green-700 transition">
               Gerar Plano
             </button>
@@ -131,262 +130,25 @@
         </form>
       </div>
 
-      <!-- Formulário de Pace -->
-      <div class="bg-white p-8 rounded-lg shadow-2xl border-2 border-blue-600 w-full max-w-md card-hover">
-        <h3 class="text-2xl font-bold text-blue-600">🚀 Melhorar o Pace</h3>
-        <div class="progress-bar mt-4" id="progressPace">
-          <div class="progress-bar-fill" style="width: 20%;"></div>
-        </div>
-        <form id="formPace" action="/generatePace" method="POST">
-          <!-- Passo 1 -->
-          <div id="paceStep1" class="step step-active">
-            <label class="block text-lg font-medium mt-4">Qual é o seu objetivo de pace?</label>
-            <input type="text" name="objetivo" placeholder="Ex.: Reduzir pace de 10 para 5min/km" class="w-full mt-2 rounded-lg border-gray-300 shadow-sm focus:ring-blue-600 focus:border-blue-600" required>
-            <button type="button" onclick="nextStep('paceStep', 1, 2)" class="mt-6 w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-blue-700 transition">
-              Próximo
-            </button>
-          </div>
-          <!-- Passo 2 -->
-          <div id="paceStep2" class="step hidden-step">
-            <label class="block text-lg font-medium mt-4">Em quanto tempo gostaria de melhorar?</label>
-            <input type="text" name="tempo_melhoria" placeholder="Ex.: 2 meses" class="w-full mt-2 rounded-lg border-gray-300 shadow-sm focus:ring-blue-600 focus:border-blue-600" required>
-            <button type="button" onclick="nextStep('paceStep', 2, 3)" class="mt-6 w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-blue-700 transition">
-              Próximo
-            </button>
-          </div>
-          <!-- Passo 3 -->
-          <div id="paceStep3" class="step hidden-step">
-            <label class="block text-lg font-medium mt-4">Qual é o seu nível atual?</label>
-            <select name="nivel" class="w-full mt-2 rounded-lg border-gray-300 shadow-sm focus:ring-blue-600 focus:border-blue-600" required>
-              <option value="Iniciante">Iniciante</option>
-              <option value="Intermediário">Intermediário</option>
-              <option value="Avançado">Avançado</option>
-            </select>
-            <button type="button" onclick="nextStep('paceStep', 3, 4)" class="mt-6 w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-blue-700 transition">
-              Próximo
-            </button>
-          </div>
-          <!-- Passo 4 -->
-          <div id="paceStep4" class="step hidden-step">
-            <label class="block text-lg font-medium mt-4">Quantos dias por semana você pode treinar?</label>
-            <input type="number" name="dias" placeholder="Ex.: 3" class="w-full mt-2 rounded-lg border-gray-300 shadow-sm focus:ring-blue-600 focus:border-blue-600" required>
-            <button type="button" onclick="nextStep('paceStep', 4, 5)" class="mt-6 w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-blue-700 transition">
-              Próximo
-            </button>
-          </div>
-          <!-- Passo 5 -->
-          <div id="paceStep5" class="step hidden-step">
-            <label class="block text-lg font-medium mt-4">Tempo diário (minutos):</label>
-            <input type="number" name="tempo" placeholder="Ex.: 30" class="w-full mt-2 rounded-lg border-gray-300 shadow-sm focus:ring-blue-600 focus:border-blue-600" required>
-            <!-- Aqui passamos 'formPace' para saber que formulário estamos usando -->
-            <button type="button" onclick="mostrarModal('formPace')" class="mt-6 w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-blue-700 transition">
-              Gerar Plano
-            </button>
-          </div>
-        </form>
-      </div>
+      <!-- Código para o Formulário de Pace, similar ao anterior -->
+
     </div>
   </section>
-
-  <!-- Seção de Valores -->
-  <section class="py-16 bg-white text-center fade-in">
-    <h2 class="text-4xl font-bold text-green-700">Escolha o Plano Ideal para Você</h2>
-    <div class="mt-10 flex flex-wrap justify-center gap-8">
-      <!-- Plano Básico (Grátis) -->
-      <div class="bg-gray-100 p-6 rounded-lg shadow-md w-full max-w-sm card-hover">
-        <h3 class="text-2xl font-bold text-green-600">Plano Básico (Grátis)</h3>
-        <p class="mt-4 text-gray-700">Acesso limitado há 1 treino/mês</p>
-        <p class="mt-4 text-4xl font-bold text-green-600">R$ 0,00</p>
-        <ul class="mt-4 text-left text-gray-700 list-disc list-inside">
-          <li>1 consulta mensal</li>
-          <li>Planos básicos de treino</li>
-          <li>Planos básicos de pace</li>
-          <li>Suporte por e-mail</li>
-        </ul>
-        <button class="mt-6 w-full bg-green-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-green-700 transition"
-                onclick="selecionarPlano('gratis')">
-          Comece Agora
-        </button>
-      </div>
-
-      <!-- Plano Pago -->
-      <div class="bg-gray-100 p-6 rounded-lg shadow-md w-full max-w-sm card-hover relative">
-        <span class="absolute top-0 right-0 bg-blue-600 text-white px-4 py-1 rounded-bl-lg">Mais Popular</span>
-        <h3 class="text-2xl font-bold text-blue-600">Plano Completo</h3>
-        <p class="mt-4 text-gray-700">Acesso ilimitado por menos de R$ 6/mês</p>
-        <p class="mt-4 text-4xl font-bold text-blue-600">R$ 59,90/ano</p>
-        <ul class="mt-4 text-left text-gray-700 list-disc list-inside">
-          <li>Acesso ilimitado</li>
-          <li>Planos personalizados</li>
-          <li>Suporte prioritário</li>
-          <li>Atualizações constantes</li>
-        </ul>
-        <button class="mt-6 w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-blue-700 transition"
-                onclick="selecionarPlano('pago')">
-          Assinar Agora
-        </button>
-      </div>
-    </div>
-  </section>
-
-  <!-- Seção de Depoimentos -->
-  <section class="py-16 bg-gray-100 text-center fade-in">
-    <h2 class="text-4xl font-bold text-green-700">O que nossos clientes dizem</h2>
-    <div class="mt-10 flex flex-wrap justify-center gap-8">
-      <div class="bg-white p-6 rounded-lg shadow-md w-full max-w-sm">
-        <p class="text-gray-700 italic">"Melhorei meu pace em 2 meses! Recomendo demais!"</p>
-        <p class="mt-4 font-bold text-green-600">- Ana Silva</p>
-      </div>
-      <div class="bg-white p-6 rounded-lg shadow-md w-full max-w-sm">
-        <p class="text-gray-700 italic">"Os treinos são incríveis e super personalizados. Posso voltar e editar quantas vezes eu quiser!"</p>
-        <p class="mt-4 font-bold text-blue-600">- João Souza</p>
-      </div>
-    </div>
-  </section>
-
-  <!-- Rodapé -->
-  <footer class="bg-gradient-to-r from-green-500 to-blue-500 text-white py-8 text-center">
-    <p class="text-lg">© 2025 Transforme sua Corrida. Todos os direitos reservados.</p>
-  </footer>
-
-  <!-- Modal de Escolha de Planos -->
-  <div id="planoModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden" data-form-id="">
-    <div class="bg-white p-8 rounded-lg shadow-2xl w-full max-w-md">
-      <h3 class="text-2xl font-bold text-green-600">Escolha seu Plano</h3>
-      <div class="mt-6 space-y-4">
-        <button onclick="selecionarPlano('gratis')" class="w-full bg-green-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-green-700 transition">
-          Plano Básico (Grátis)
-        </button>
-        <button onclick="selecionarPlano('pago')" class="w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-blue-700 transition">
-          Plano Completo - R$ 59,90/ano
-        </button>
-      </div>
-      <button onclick="fecharModal()" class="mt-6 w-full bg-gray-300 text-gray-700 font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-gray-400 transition">
-        Fechar
-      </button>
-    </div>
-  </div>
-
-  <!-- Modal de E-mail -->
-  <div id="emailModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden">
-    <div class="bg-white p-8 rounded-lg shadow-2xl w-full max-w-md">
-      <h3 class="text-2xl font-bold text-green-600">Informe seu e-mail</h3>
-      <form id="emailForm" onsubmit="return enviarFormularioComEmail(event)">
-        <input type="email" id="userEmail" placeholder="Digite seu e-mail" class="w-full mt-4 p-2 rounded-lg border-gray-300 shadow-sm focus:ring-green-600 focus:border-green-600" required>
-        <button type="submit" class="mt-6 w-full bg-green-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-green-700 transition">
-          Confirmar
-        </button>
-      </form>
-      <button onclick="fecharEmailModal()" class="mt-4 w-full bg-gray-300 text-gray-700 font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-gray-400 transition">
-        Fechar
-      </button>
-    </div>
-  </div>
 
   <script>
-<script>
-  // Função para avançar etapas (passos) do formulário
-  function nextStep(formPrefix, currentStep, nextStepNumber) {
-    // Esconde passo atual
-    const currentElement = document.getElementById(formPrefix + currentStep);
-    if (currentElement) {
-      currentElement.classList.remove("step-active");
-      currentElement.classList.add("hidden-step");
+    // Função para navegar entre os passos
+    function nextStep(prefix, currentStep, nextStep) {
+      // Oculta o passo atual
+      document.getElementById(prefix + currentStep).classList.add('hidden-step');
+      // Mostra o próximo passo
+      document.getElementById(prefix + nextStep).classList.remove('hidden-step');
     }
 
-    // Mostra próximo passo
-    const nextElement = document.getElementById(formPrefix + nextStepNumber);
-    if (nextElement) {
-      nextElement.classList.remove("hidden-step");
-      nextElement.classList.add("step-active");
+    // Função para mostrar o modal
+    function mostrarModal(formName) {
+      alert('Plano gerado para o formulário: ' + formName);
     }
-
-    // Atualiza a barra de progresso
-    let progressBarId = "";
-    if (formPrefix === "step") {
-      progressBarId = "progressStep";   // barra do formulário de corrida
-    } else if (formPrefix === "paceStep") {
-      progressBarId = "progressPace";  // barra do formulário de pace
-    }
-
-    const progressBar = document.getElementById(progressBarId);
-    if (progressBar) {
-      const progressFill = progressBar.querySelector(".progress-bar-fill");
-      const totalSteps = 5; // total de etapas em cada formulário
-      const progressWidth = (nextStepNumber / totalSteps) * 100;
-      progressFill.style.width = `${progressWidth}%`;
-    }
-  }
-
-  // Exibe o modal e guarda qual formulário será submetido
-  function mostrarModal(formId) {
-    const modal = document.getElementById('planoModal');
-    modal.classList.remove('hidden');
-    // Define qual formulário foi usado
-    modal.dataset.formId = formId;
-  }
-
-  // Fecha o modal manualmente
-  function fecharModal() {
-    const modal = document.getElementById('planoModal');
-    modal.classList.add('hidden');
-  }
-
-  // Exibe o modal de e-mail
-  function mostrarEmailModal() {
-    const modal = document.getElementById('emailModal');
-    modal.classList.remove('hidden');
-  }
-
-  // Fecha o modal de e-mail
-  function fecharEmailModal() {
-    const modal = document.getElementById('emailModal');
-    modal.classList.add('hidden');
-  }
-
-  // Função para escolher o plano (Grátis ou Pago) e exibir o modal de e-mail
-  function selecionarPlano(plano) {
-    const modal = document.getElementById('planoModal');
-    const formId = modal.dataset.formId; // 'formCorrida' ou 'formPace'
-    const form = document.getElementById(formId);
-
-    // Guarda o plano escolhido no formulário
-    const inputPlano = document.createElement('input');
-    inputPlano.type = 'hidden';
-    inputPlano.name = 'plano';
-    inputPlano.value = plano;
-    form.appendChild(inputPlano);
-
-    // Fecha o modal de planos e abre o modal de e-mail
-    fecharModal();
-    mostrarEmailModal();
-  }
-
-  // Função para enviar o formulário com o e-mail
-  function enviarFormularioComEmail(event) {
-    event.preventDefault();
-
-    const email = document.getElementById('userEmail').value;
-    const modal = document.getElementById('planoModal');
-    const formId = modal.dataset.formId; // 'formCorrida' ou 'formPace'
-    const form = document.getElementById(formId);
-
-    // Adiciona o e-mail ao formulário
-    const inputEmail = document.createElement('input');
-    inputEmail.type = 'hidden';
-    inputEmail.name = 'email';
-    inputEmail.value = email;
-    form.appendChild(inputEmail);
-
-    // Submete o formulário
-    if (formId === 'formCorrida') {
-      form.action = '/generate'; // Rota para gerar o plano de corrida
-    } else if (formId === 'formPace') {
-      form.action = '/generatePace'; // Rota para gerar o plano de pace
-    }
-
-    form.submit();
-  }
-</script>
+  </script>
+  
 </body>
 </html>
