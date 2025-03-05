@@ -1,55 +1,92 @@
-from flask import Flask, request, render_template, redirect, url_for, session, jsonify
-from openai import OpenAIError
+from flask import Flask, request, render_template, redirect, url_for, session, jsonify, g
 import os
-import openai
-import base64
-import smtplib
-from email.message import EmailMessage
-from datetime import datetime
-
-# Listar arquivos no Railway para depuração
-print("\n📂 Listando arquivos disponíveis no Railway:")
-
-for root, dirs, files in os.walk(os.getcwd()):
-    print(f"📁 Diretório: {root}")
-    for filename in files:
-        print(f"  - {filename}")
-
-print("✅ Verificação concluída. Se 'landing.html' não aparecer, ele não foi enviado no deploy.")
-
+from sqlalchemy import create_engine
+from sqlalchemy.orm import scoped_session, sessionmaker
+from datetime import datetime, timedelta
+import hmac
+import hashlib
 
 # Configuração do Flask
 template_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Templates")
 app = Flask(__name__, template_folder=template_dir)
-app.secret_key = "super_secret_key"  # Necessário para usar session
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "uma_chave_segura_aqui")
 
-# Configuração da API do OpenAI
-openai.api_key = os.getenv("OPENAI_API_KEY")  # Use variáveis de ambiente para segredos
-# Criar um cliente OpenAI usando sua API Key (que já está configurada no Railway)
-client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# Configuração do Banco de Dados PostgreSQL
+DATABASE_URL = os.getenv("DATABASE_URL")
+engine = create_engine(DATABASE_URL)
+db = scoped_session(sessionmaker(bind=engine))
 
+# Configuração do Mercado Pago
+MERCADO_PAGO_ACCESS_TOKEN = os.getenv("MERCADO_PAGO_ACCESS_TOKEN")
+MERCADO_PAGO_WEBHOOK_SECRET = os.getenv("MERCADO_PAGO_WEBHOOK_SECRET")
 
-# Disclaimer a ser incluído no início do plano
-DISCLAIMER = (
-    "Disclaimer: Este plano é apenas uma sugestão e não substitui a avaliação e o acompanhamento "
-    "de um profissional de saúde. Consulte um médico ou um profissional de educação física antes de "
-    "iniciar qualquer programa de treinamento.\n\n"
-)
+# Função para conectar ao banco de dados
+def get_db():
+    return db
 
-# Função para gerar um plano no OpenAI
-def gerar_plano(prompt):
-    try:
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "Você é um assistente especializado em criar planos de treino para corrida."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.5
+# Função para validar a assinatura do webhook
+def validar_assinatura(body, signature):
+    """
+    Valida a assinatura do webhook usando a chave secreta.
+    """
+    if not MERCADO_PAGO_WEBHOOK_SECRET:
+        raise ValueError("Assinatura secreta do webhook não configurada.")
+
+    # Gera a assinatura esperada
+    chave_secreta = MERCADO_PAGO_WEBHOOK_SECRET.encode("utf-8")
+    assinatura_esperada = hmac.new(chave_secreta, body, hashlib.sha256).hexdigest()
+
+    # Compara a assinatura recebida com a esperada
+    return hmac.compare_digest(assinatura_esperada, signature)
+
+# Função para verificar se o usuário pode gerar um plano
+def pode_gerar_plano(email, plano):
+    db = get_db()
+    usuario = db.execute("SELECT * FROM usuarios WHERE email = :email", {"email": email}).fetchone()
+
+    if not usuario:
+        # Usuário não existe, pode gerar plano
+        return True
+
+    if plano == "anual":
+        # Plano anual: pode gerar quantas vezes quiser
+        return True
+    elif plano == "gratuito":
+        # Plano gratuito: verifica se já gerou um plano este mês
+        ultima_geracao = datetime.strptime(usuario["ultima_geracao"], "%Y-%m-%d %H:%M:%S")
+        hoje = datetime.now()
+        if (hoje - ultima_geracao).days < 30:
+            return False  # Já gerou um plano este mês
+        return True
+
+    return False
+
+# Função para registrar a geração de um plano
+def registrar_geracao(email, plano):
+    db = get_db()
+    hoje = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # Verifica se o usuário já existe
+    usuario = db.execute("SELECT * FROM usuarios WHERE email = :email", {"email": email}).fetchone()
+    if not usuario:
+        # Cria um novo usuário
+        db.execute(
+            "INSERT INTO usuarios (email, plano, data_inscricao, ultima_geracao) VALUES (:email, :plano, :data_inscricao, :ultima_geracao)",
+            {"email": email, "plano": plano, "data_inscricao": hoje, "ultima_geracao": hoje},
         )
-        return response.choices[0].message.content  # Ajuste para nova estrutura de resposta
-    except openai.OpenAIError as e:
-        return f"Erro ao acessar a API OpenAI: {str(e)}"
+    else:
+        # Atualiza a última geração
+        db.execute(
+            "UPDATE usuarios SET ultima_geracao = :ultima_geracao WHERE email = :email",
+            {"ultima_geracao": hoje, "email": email},
+        )
+
+    # Registra a geração na tabela de gerações
+    db.execute(
+        "INSERT INTO geracoes (usuario_id, data_geracao) VALUES (:usuario_id, :data_geracao)",
+        {"usuario_id": usuario["id"], "data_geracao": hoje},
+    )
+    db.commit()
 
 # Rota da página principal (Landing Page)
 @app.route("/")
@@ -67,10 +104,18 @@ def generate():
     dados_usuario = request.form
 
     # Verifica se todos os campos necessários foram enviados
-    required_fields = ["objetivo", "tempo_melhoria", "nivel", "dias", "tempo"]
+    required_fields = ["objetivo", "tempo_melhoria", "nivel", "dias", "tempo", "email", "plano"]
     if not all(field in dados_usuario for field in required_fields):
         return "Dados do formulário incompletos.", 400
 
+    email = dados_usuario["email"]
+    plano = dados_usuario["plano"]
+
+    # Verifica se o usuário pode gerar um plano
+    if not pode_gerar_plano(email, plano):
+        return "Você já gerou um plano gratuito este mês. Atualize para o plano anual para gerar mais planos.", 400
+
+    # Gera o plano
     prompt = f"""
 Crie um plano detalhado de corrida para atingir o objetivo de {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']}:
 - Nível: {dados_usuario['nivel']}
@@ -85,35 +130,11 @@ Para cada treino, forneça:
 Estruture o plano de forma semanal, listando os treinos por dia.
     """
     plano_gerado = gerar_plano(prompt)
+
+    # Registra a geração do plano
+    registrar_geracao(email, plano)
+
     session["titulo"] = "Plano de Corrida"
-    session["plano"] = DISCLAIMER + plano_gerado
-    return redirect(url_for("resultado"))
-
-# Processa o formulário de PACE
-@app.route("/generatePace", methods=["POST"])
-def generate_pace():
-    dados_usuario = request.form
-
-    # Verifica se todos os campos necessários foram enviados
-    required_fields = ["objetivo", "tempo_melhoria", "nivel", "dias", "tempo"]
-    if not all(field in dados_usuario for field in required_fields):
-        return "Dados do formulário incompletos.", 400
-
-    prompt = f"""
-Crie um plano detalhado para melhorar o pace de {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']}:
-- Nível: {dados_usuario['nivel']}
-- Dias disponíveis: {dados_usuario['dias']}
-- Tempo por treino: {dados_usuario['tempo']} minutos.
-
-Para cada treino, detalhe:
-- Tipo de exercício (ex.: intervalados, progressivos, etc.);
-- Pace ideal (ritmo de corrida) a ser mantido;
-- Tempo recomendado de execução.
-
-Organize o plano em uma estrutura semanal clara, indicando os treinos para cada dia.
-    """
-    plano_gerado = gerar_plano(prompt)
-    session["titulo"] = "Plano para Melhorar o Pace"
     session["plano"] = DISCLAIMER + plano_gerado
     return redirect(url_for("resultado"))
 
@@ -124,67 +145,56 @@ def resultado():
     plano = session.get("plano", "Nenhum plano gerado.")
     return render_template("resultado.html", titulo=titulo, plano=plano)
 
-# Endpoint para envio de e-mail com o PDF gerado
-@app.route('/send_email', methods=['POST'])
-def send_email():
-    data = request.get_json()
-    recipient = data.get('recipient')
-    pdf_data = data.get('pdfData')
-
-    if not recipient or not pdf_data:
-        return jsonify({"status": "error", "message": "Dados incompletos"}), 400
-
-    # Remove o prefixo do data URI, se presente
-    if pdf_data.startswith("data:"):
-        pdf_data = pdf_data.split(",", 1)[1]
-
+# Rota do Webhook do Mercado Pago
+@app.route("/webhook/mercadopago", methods=["POST"])
+def mercadopago_webhook():
     try:
-        pdf_bytes = base64.b64decode(pdf_data)
+        # Verifica se a assinatura foi enviada
+        signature = request.headers.get("X-Signature")
+        if not signature:
+            return jsonify({"error": "Assinatura inválida"}), 403
+
+        # Valida a assinatura
+        body = request.get_data()  # Obtém o corpo da requisição
+        if not validar_assinatura(body, signature):
+            return jsonify({"error": "Assinatura inválida"}), 403
+
+        # Processa os dados do webhook
+        data = request.json
+        print("Dados recebidos do Mercado Pago:", data)
+
+        # Verifica o tipo de evento
+        evento = data.get("action")
+        if evento == "payment.updated":
+            payment_id = data.get("data", {}).get("id")
+            status = data.get("data", {}).get("status")
+            print(f"Pagamento {payment_id} atualizado para o status: {status}")
+
+            # Atualiza o status do pagamento no banco de dados
+            db = get_db()
+            db.execute(
+                "INSERT INTO pagamentos (payment_id, status) VALUES (:payment_id, :status)",
+                {"payment_id": payment_id, "status": status},
+            )
+            db.commit()
+
+        elif evento == "subscription.updated":
+            subscription_id = data.get("data", {}).get("id")
+            status = data.get("data", {}).get("status")
+            print(f"Assinatura {subscription_id} atualizada para o status: {status}")
+
+            # Atualiza o status da assinatura no banco de dados
+            db = get_db()
+            db.execute(
+                "INSERT INTO assinaturas (subscription_id, status) VALUES (:subscription_id, :status)",
+                {"subscription_id": subscription_id, "status": status},
+            )
+            db.commit()
+
+        return jsonify({"status": "success"}), 200
     except Exception as e:
-        return jsonify({"status": "error", "message": "Erro ao decodificar PDF: " + str(e)}), 400
-
-    # Gerar nome do arquivo PDF baseado na data e tipo de treino
-    today = datetime.now().strftime('%Y%m%d')
-    titulo = session.get("titulo", "").lower()
-    if "corrida" in titulo:
-        training_type = "TREINO_CORRIDA"
-    elif "pace" in titulo:
-        training_type = "TREINO_PACE"
-    else:
-        training_type = "TREINO"
-    filename = f"{today}_{training_type}.pdf"
-
-    # Configurar o texto do e-mail
-    email_text = (
-        "Olá,\n\n"
-        "Parabéns por tomar a iniciativa de cuidar da sua saúde! Em anexo, você encontrará o seu plano de treino personalizado.\n"
-        "Siga as orientações com atenção e, se possível, consulte um profissional de saúde para acompanhamento.\n\n"
-        "Desejamos muito sucesso em sua jornada!\n\n"
-        "Atenciosamente,\n"
-        "Equipe DNZ Dark Digital"
-    )
-
-    msg = EmailMessage()
-    msg['Subject'] = 'Seu Plano de Treino'
-    msg['From'] = 'dnzdarkdigital@gmail.com'
-    msg['To'] = recipient
-    msg.set_content(email_text)
-    msg.add_attachment(pdf_bytes, maintype='application', subtype='pdf', filename=filename)
-
-    # Configuração do SMTP utilizando o Gmail (serviço gratuito)
-    smtp_host = 'smtp.gmail.com'
-    smtp_port = 587
-    smtp_user = 'dnzdarkdigital@gmail.com'
-    smtp_pass = os.getenv("SMTP_PASSWORD")  # Use variáveis de ambiente para segredos
-
-    try:
-        with smtplib.SMTP(smtp_host, smtp_port) as server:
-            server.starttls()
-            server.login(smtp_user, smtp_pass)
-            server.send_message(msg)
-        return jsonify({"status": "success", "message": "E-mail enviado com sucesso."})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        print("Erro ao processar webhook:", str(e))
+        return jsonify({"error": str(e)}), 500
 
 # 🚀 Inicia o servidor Flask na porta correta para o Railway
 if __name__ == "__main__":

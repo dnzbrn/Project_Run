@@ -1,3 +1,7 @@
 flask 
 gunicorn 
+openai
+flask 
+gunicorn 
 openai 
+
