@@ -4,5 +4,6 @@ openai
 flask 
 gunicorn 
 openai 
-sqlalchemy==2.x.x  # versão específica ou o que estiver instalada
+sqlalchemy==2.0.18  # ou outra versão específica
+
 
