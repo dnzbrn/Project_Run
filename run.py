@@ -1,6 +1,6 @@
 from flask import Flask, request, render_template, redirect, url_for, session, jsonify
 import os
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text  # Importe a função text
 from sqlalchemy.orm import scoped_session, sessionmaker
 from datetime import datetime
 import hmac
@@ -49,7 +49,10 @@ def validar_assinatura(body, signature):
 # Função para verificar se o usuário pode gerar um plano
 def pode_gerar_plano(email, plano):
     db = get_db()
-    usuario = db.execute("SELECT * FROM usuarios WHERE email = :email", {"email": email}).fetchone()
+    usuario = db.execute(
+        text("SELECT * FROM usuarios WHERE email = :email"),  # Use text() aqui
+        {"email": email}
+    ).fetchone()
 
     if not usuario:
         # Usuário não existe, pode gerar plano
@@ -74,23 +77,29 @@ def registrar_geracao(email, plano):
     hoje = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     # Verifica se o usuário já existe
-    usuario = db.execute("SELECT * FROM usuarios WHERE email = :email", {"email": email}).fetchone()
+    usuario = db.execute(
+        text("SELECT * FROM usuarios WHERE email = :email"),  # Use text() aqui
+        {"email": email}
+    ).fetchone()
     if not usuario:
         # Cria um novo usuário
         db.execute(
-            "INSERT INTO usuarios (email, plano, data_inscricao, ultima_geracao) VALUES (:email, :plano, :data_inscricao, :ultima_geracao)",
+            text("""
+                INSERT INTO usuarios (email, plano, data_inscricao, ultima_geracao)
+                VALUES (:email, :plano, :data_inscricao, :ultima_geracao)
+            """),
             {"email": email, "plano": plano, "data_inscricao": hoje, "ultima_geracao": hoje},
         )
     else:
         # Atualiza a última geração
         db.execute(
-            "UPDATE usuarios SET ultima_geracao = :ultima_geracao WHERE email = :email",
+            text("UPDATE usuarios SET ultima_geracao = :ultima_geracao WHERE email = :email"),
             {"ultima_geracao": hoje, "email": email},
         )
 
     # Registra a geração na tabela de gerações
     db.execute(
-        "INSERT INTO geracoes (usuario_id, data_geracao) VALUES (:usuario_id, :data_geracao)",
+        text("INSERT INTO geracoes (usuario_id, data_geracao) VALUES (:usuario_id, :data_geracao)"),
         {"usuario_id": usuario["id"], "data_geracao": hoje},
     )
     db.commit()
@@ -240,7 +249,7 @@ def mercadopago_webhook():
             # Atualiza o status do pagamento no banco de dados
             db = get_db()
             db.execute(
-                "INSERT INTO pagamentos (payment_id, status) VALUES (:payment_id, :status)",
+                text("INSERT INTO pagamentos (payment_id, status) VALUES (:payment_id, :status)"),
                 {"payment_id": payment_id, "status": status},
             )
             db.commit()
@@ -253,7 +262,7 @@ def mercadopago_webhook():
             # Atualiza o status da assinatura no banco de dados
             db = get_db()
             db.execute(
-                "INSERT INTO assinaturas (subscription_id, status) VALUES (:subscription_id, :status)",
+                text("INSERT INTO assinaturas (subscription_id, status) VALUES (:subscription_id, :status)"),
                 {"subscription_id": subscription_id, "status": status},
             )
             db.commit()
