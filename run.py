@@ -5,7 +5,7 @@ from sqlalchemy.orm import scoped_session, sessionmaker
 from datetime import datetime
 import hmac
 import hashlib
-import openai
+from openai import OpenAI  # Importação atualizada da OpenAI
 
 # Configuração do Flask
 template_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Templates")
@@ -22,7 +22,7 @@ MERCADO_PAGO_ACCESS_TOKEN = os.getenv("MERCADO_PAGO_ACCESS_TOKEN")
 MERCADO_PAGO_WEBHOOK_SECRET = os.getenv("MERCADO_PAGO_WEBHOOK_SECRET")
 
 # Configuração da OpenAI
-openai.api_key = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))  # Cliente OpenAI atualizado
 
 # Variável de disclaimer
 DISCLAIMER = "Este plano é gerado automaticamente. Consulte um profissional para ajustes personalizados.\n\n"
@@ -120,8 +120,11 @@ def gerar_plano_openai(prompt):
     Gera um plano de treino usando a API da OpenAI.
     """
     try:
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",  # Ou "gpt-3.5-turbo" para um modelo mais rápido
+        print("Enviando prompt para a OpenAI...")
+        print(f"Prompt: {prompt}")
+
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",  # Use "gpt-4" se tiver acesso
             messages=[
                 {"role": "system", "content": "Você é um treinador de corrida experiente."},
                 {"role": "user", "content": prompt},
@@ -129,7 +132,12 @@ def gerar_plano_openai(prompt):
             max_tokens=1000,  # Ajuste conforme necessário
             temperature=0.7,  # Controla a criatividade da resposta
         )
-        return response.choices[0].message["content"].strip()
+
+        print("Resposta recebida da OpenAI:")
+        print(response)
+
+        # Retorna o conteúdo gerado
+        return response.choices[0].message.content.strip()
     except Exception as e:
         print(f"Erro ao gerar plano com OpenAI: {e}")
         return "Erro ao gerar o plano. Tente novamente mais tarde."
