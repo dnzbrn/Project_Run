@@ -121,7 +121,7 @@ def gerar_plano_openai(prompt):
     """
     try:
         response = openai.ChatCompletion.create(
-            model="gpt-4",  # Ou "gpt-3.5-turbo" para um modelo mais rápido
+            model="gpt-3.5-turbo",  # Ou "gpt-3.5-turbo" para um modelo mais rápido
             messages=[
                 {"role": "system", "content": "Você é um treinador de corrida experiente."},
                 {"role": "user", "content": prompt},
