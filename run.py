@@ -1,11 +1,11 @@
 from flask import Flask, request, render_template, redirect, url_for, session, jsonify
 import os
-from sqlalchemy import create_engine, text  # Importe a função text
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import scoped_session, sessionmaker
 from datetime import datetime
 import hmac
 import hashlib
-import openai  # Importação da biblioteca da OpenAI
+import openai
 
 # Configuração do Flask
 template_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Templates")
@@ -22,7 +22,7 @@ MERCADO_PAGO_ACCESS_TOKEN = os.getenv("MERCADO_PAGO_ACCESS_TOKEN")
 MERCADO_PAGO_WEBHOOK_SECRET = os.getenv("MERCADO_PAGO_WEBHOOK_SECRET")
 
 # Configuração da OpenAI
-openai.api_key = os.getenv("OPENAI_API_KEY")  # Chave da API da OpenAI
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # Variável de disclaimer
 DISCLAIMER = "Este plano é gerado automaticamente. Consulte um profissional para ajustes personalizados.\n\n"
@@ -50,7 +50,7 @@ def validar_assinatura(body, signature):
 def pode_gerar_plano(email, plano):
     db = get_db()
     usuario = db.execute(
-        text("SELECT * FROM usuarios WHERE email = :email"),  # Use text() aqui
+        text("SELECT * FROM usuarios WHERE email = :email"),
         {"email": email}
     ).fetchone()
 
@@ -78,21 +78,27 @@ def registrar_geracao(email, plano):
 
     # Verifica se o usuário já existe
     usuario = db.execute(
-        text("SELECT * FROM usuarios WHERE email = :email"),  # Use text() aqui
+        text("SELECT * FROM usuarios WHERE email = :email"),
         {"email": email}
     ).fetchone()
 
     if not usuario:
-        # Cria um novo usuário e retorna o ID
-        result = db.execute(
+        # Cria um novo usuário
+        db.execute(
             text("""
                 INSERT INTO usuarios (email, plano, data_inscricao, ultima_geracao)
                 VALUES (:email, :plano, :data_inscricao, :ultima_geracao)
-                RETURNING id  # Retorna o ID do usuário criado
             """),
             {"email": email, "plano": plano, "data_inscricao": hoje, "ultima_geracao": hoje},
         )
-        usuario_id = result.fetchone()["id"]  # Obtém o ID do usuário criado
+        db.commit()
+
+        # Busca o ID do usuário recém-inserido
+        usuario = db.execute(
+            text("SELECT id FROM usuarios WHERE email = :email"),
+            {"email": email}
+        ).fetchone()
+        usuario_id = usuario["id"]
     else:
         # Atualiza a última geração
         db.execute(
