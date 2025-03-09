@@ -52,7 +52,7 @@ def pode_gerar_plano(email, plano):
     usuario = db.execute(
         text("SELECT * FROM usuarios WHERE email = :email"),
         {"email": email}
-    ).fetchone()
+    ).mappings().fetchone()
 
     if not usuario:
         # Usuário não existe, pode gerar plano
@@ -80,7 +80,7 @@ def registrar_geracao(email, plano):
     usuario = db.execute(
         text("SELECT * FROM usuarios WHERE email = :email"),
         {"email": email}
-    ).fetchone()
+    ).mappings().fetchone()
 
     if not usuario:
         # Cria um novo usuário
@@ -97,7 +97,7 @@ def registrar_geracao(email, plano):
         usuario = db.execute(
             text("SELECT id FROM usuarios WHERE email = :email"),
             {"email": email}
-        ).fetchone()
+        ).mappings().fetchone()
         usuario_id = usuario["id"]
     else:
         # Atualiza a última geração
