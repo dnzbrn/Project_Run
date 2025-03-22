@@ -151,7 +151,7 @@ def iniciar_pagamento():
             {
                 "title": "Plano Anual de Treino",
                 "quantity": 1,
-                "unit_price": 100.0,
+                "unit_price": 59.9,
                 "currency_id": "BRL",
             }
         ],
