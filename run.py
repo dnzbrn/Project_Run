@@ -50,23 +50,26 @@ def pode_gerar_plano(email, plano):
     ).mappings().fetchone()
 
     if not usuario:
-        return True if plano == "gratuito" else False
+        # Se o usuário não existe, ele pode gerar qualquer plano
+        return True
 
     if plano == "anual":
+        # Verifica se o usuário tem uma assinatura ativa
         assinatura = db.execute(
             text("SELECT status FROM assinaturas WHERE usuario_id = :usuario_id ORDER BY id DESC LIMIT 1"),
             {"usuario_id": usuario["id"]}
         ).mappings().fetchone()
 
         if assinatura and assinatura["status"] == "active":
-            return True
-        return False
+            return True  # Assinatura ativa, pode gerar plano
+        return False  # Assinatura não ativa ou não existe
 
     elif plano == "gratuito":
+        # Plano gratuito: verifica se já gerou um plano este mês
         ultima_geracao = datetime.strptime(usuario["ultima_geracao"], "%Y-%m-%d %H:%M:%S")
         hoje = datetime.now()
         if (hoje - ultima_geracao).days < 30:
-            return False
+            return False  # Já gerou um plano este mês
         return True
 
     return False
