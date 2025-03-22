@@ -39,6 +39,9 @@
     #planoModal, #emailModal {
       transition: opacity 0.3s ease;
     }
+    .border-red-500 {
+      border-color: #ef4444;
+    }
   </style>
 </head>
 <body class="bg-gray-50 text-gray-900">
@@ -222,6 +225,7 @@
         <!-- Botão "Assinar Agora" com formulário para o plano anual -->
         <form id="formAssinarAnual" action="/assinar_plano_anual" method="POST">
           <input type="hidden" name="plano" value="anual">
+          <input type="email" name="email" placeholder="Digite seu e-mail" class="w-full mt-4 p-2 rounded-lg border-gray-300 shadow-sm focus:ring-blue-600 focus:border-blue-600" required>
           <button type="submit" class="mt-6 w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-blue-700 transition">
             Assinar Agora
           </button>
@@ -287,12 +291,27 @@
 <script>
   // Função para avançar etapas (passos) do formulário
   function nextStep(formPrefix, currentStep, nextStepNumber) {
-    // Esconde passo atual
     const currentElement = document.getElementById(formPrefix + currentStep);
-    if (currentElement) {
-      currentElement.classList.remove("step-active");
-      currentElement.classList.add("hidden-step");
+    const inputs = currentElement.querySelectorAll('input, select');
+    let isValid = true;
+
+    inputs.forEach(input => {
+      if (!input.value.trim()) {
+        isValid = false;
+        input.classList.add('border-red-500'); // Adiciona borda vermelha para campos inválidos
+      } else {
+        input.classList.remove('border-red-500');
+      }
+    });
+
+    if (!isValid) {
+      alert('Por favor, preencha todos os campos antes de avançar.');
+      return;
     }
+
+    // Esconde passo atual
+    currentElement.classList.remove("step-active");
+    currentElement.classList.add("hidden-step");
 
     // Mostra próximo passo
     const nextElement = document.getElementById(formPrefix + nextStepNumber);
@@ -302,19 +321,13 @@
     }
 
     // Atualiza a barra de progresso
-    let progressBarId = "";
-    if (formPrefix === "step") {
-      progressBarId = "progressStep";   // barra do formulário de corrida
-    } else if (formPrefix === "paceStep") {
-      progressBarId = "progressPace";  // barra do formulário de pace
-    }
-
+    const progressBarId = formPrefix === "step" ? "progressStep" : "progressPace";
     const progressBar = document.getElementById(progressBarId);
     if (progressBar) {
       const progressFill = progressBar.querySelector(".progress-bar-fill");
       const totalSteps = 5; // total de etapas em cada formulário
       const progressWidth = (nextStepNumber / totalSteps) * 100;
-      progressFill.style.width = progressWidth + "%"; // Corrigido aqui
+      progressFill.style.width = progressWidth + "%";
     }
   }
 

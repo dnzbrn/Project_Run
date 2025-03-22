@@ -49,28 +49,26 @@ def pode_gerar_plano(email, plano):
         {"email": email}
     ).mappings().fetchone()
 
-    if not usuario:
-        # Se o usuário não existe, ele pode gerar qualquer plano
-        return True
-
     if plano == "anual":
         # Verifica se o usuário tem uma assinatura ativa
-        assinatura = db.execute(
-            text("SELECT status FROM assinaturas WHERE usuario_id = :usuario_id ORDER BY id DESC LIMIT 1"),
-            {"usuario_id": usuario["id"]}
-        ).mappings().fetchone()
+        if usuario:
+            assinatura = db.execute(
+                text("SELECT status FROM assinaturas WHERE usuario_id = :usuario_id ORDER BY id DESC LIMIT 1"),
+                {"usuario_id": usuario["id"]}
+            ).mappings().fetchone()
 
-        if assinatura and assinatura["status"] == "active":
-            return True  # Assinatura ativa, pode gerar plano
+            if assinatura and assinatura["status"] == "active":
+                return True  # Assinatura ativa, pode gerar plano
         return False  # Assinatura não ativa ou não existe
 
     elif plano == "gratuito":
-        # Plano gratuito: verifica se já gerou um plano este mês
-        ultima_geracao = datetime.strptime(usuario["ultima_geracao"], "%Y-%m-%d %H:%M:%S")
-        hoje = datetime.now()
-        if (hoje - ultima_geracao).days < 30:
-            return False  # Já gerou um plano este mês
-        return True
+        if usuario:
+            # Plano gratuito: verifica se já gerou um plano este mês
+            ultima_geracao = datetime.strptime(usuario["ultima_geracao"], "%Y-%m-%d %H:%M:%S")
+            hoje = datetime.now()
+            if (hoje - ultima_geracao).days < 30:
+                return False  # Já gerou um plano este mês
+        return True  # Usuário não existe ou pode gerar plano gratuito
 
     return False
 
@@ -177,7 +175,7 @@ def iniciar_pagamento():
 # Rota para assinar o plano anual diretamente
 @app.route("/assinar_plano_anual", methods=["POST"])
 def assinar_plano_anual():
-    # Redireciona para o Mercado Pago sem exigir e-mail
+    # Redireciona para o Mercado Pago sem exigir e-mail no formulário
     return redirect(url_for("iniciar_pagamento"))
 
 # Rota da página principal (Landing Page)
