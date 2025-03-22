@@ -128,9 +128,12 @@ def gerar_plano_openai(prompt):
         return "Erro ao gerar o plano. Tente novamente mais tarde."
 
 # Rota para iniciar o pagamento no Mercado Pago
-@app.route("/iniciar_pagamento", methods=["POST"])
+@app.route("/iniciar_pagamento", methods=["GET", "POST"])
 def iniciar_pagamento():
-    dados_usuario = request.form
+    if request.method == "POST":
+        dados_usuario = request.form
+    else:
+        dados_usuario = request.args  # Para capturar parâmetros da URL (GET)
 
     if "email" not in dados_usuario:
         return "Email não fornecido.", 400
@@ -173,9 +176,12 @@ def iniciar_pagamento():
         return "Erro ao processar o pagamento. Tente novamente mais tarde.", 500
 
 # Rota para assinar o plano anual diretamente
-@app.route("/assinar_plano_anual", methods=["POST"])
+@app.route("/assinar_plano_anual", methods=["GET", "POST"])
 def assinar_plano_anual():
-    dados_usuario = request.form
+    if request.method == "POST":
+        dados_usuario = request.form
+    else:
+        dados_usuario = request.args  # Para capturar parâmetros da URL (GET)
 
     if "email" not in dados_usuario:
         return "Email não fornecido.", 400
