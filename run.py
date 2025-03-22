@@ -175,8 +175,15 @@ def iniciar_pagamento():
 # Rota para assinar o plano anual diretamente
 @app.route("/assinar_plano_anual", methods=["POST"])
 def assinar_plano_anual():
-    # Redireciona para o Mercado Pago sem exigir e-mail no formulário
-    return redirect(url_for("iniciar_pagamento"))
+    dados_usuario = request.form
+
+    if "email" not in dados_usuario:
+        return "Email não fornecido.", 400
+
+    email = dados_usuario["email"]
+
+    # Redireciona para o Mercado Pago
+    return redirect(url_for("iniciar_pagamento", email=email))
 
 # Rota da página principal (Landing Page)
 @app.route("/")
