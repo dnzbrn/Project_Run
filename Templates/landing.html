@@ -123,7 +123,6 @@
           <div id="step5" class="step hidden-step">
             <label class="block text-lg font-medium mt-4">Tempo diário (minutos):</label>
             <input type="number" name="tempo" placeholder="Ex.: 30" class="w-full mt-2 rounded-lg border-gray-300 shadow-sm focus:ring-green-600 focus:border-green-600" required>
-            <!-- Aqui passamos 'formCorrida' para saber que formulário estamos usando -->
             <button type="button" onclick="mostrarModal('formCorrida')" class="mt-6 w-full bg-green-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-green-700 transition">
               Gerar Plano
             </button>
@@ -178,7 +177,6 @@
           <div id="paceStep5" class="step hidden-step">
             <label class="block text-lg font-medium mt-4">Tempo diário (minutos):</label>
             <input type="number" name="tempo" placeholder="Ex.: 30" class="w-full mt-2 rounded-lg border-gray-300 shadow-sm focus:ring-blue-600 focus:border-blue-600" required>
-            <!-- Aqui passamos 'formPace' para saber que formulário estamos usando -->
             <button type="button" onclick="mostrarModal('formPace')" class="mt-6 w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-blue-700 transition">
               Gerar Plano
             </button>
@@ -204,7 +202,7 @@
           <li>Suporte por e-mail</li>
         </ul>
         <button class="mt-6 w-full bg-green-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-green-700 transition"
-                onclick="selecionarPlano('gratis')">
+                onclick="selecionarPlano('gratuito')">
           Comece Agora
         </button>
       </div>
@@ -221,10 +219,13 @@
           <li>Suporte prioritário</li>
           <li>Atualizações constantes</li>
         </ul>
-        <button class="mt-6 w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-blue-700 transition"
-                onclick="selecionarPlano('pago')">
-          Assinar Agora
-        </button>
+        <!-- Botão "Assinar Agora" com formulário para o plano anual -->
+        <form id="formAssinarAnual" action="/assinar_plano_anual" method="POST">
+          <input type="hidden" name="plano" value="anual">
+          <button type="submit" class="mt-6 w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-blue-700 transition">
+            Assinar Agora
+          </button>
+        </form>
       </div>
     </div>
   </section>
@@ -254,10 +255,10 @@
     <div class="bg-white p-8 rounded-lg shadow-2xl w-full max-w-md">
       <h3 class="text-2xl font-bold text-green-600">Escolha seu Plano</h3>
       <div class="mt-6 space-y-4">
-        <button onclick="selecionarPlano('gratis')" class="w-full bg-green-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-green-700 transition">
+        <button onclick="selecionarPlano('gratuito')" class="w-full bg-green-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-green-700 transition">
           Plano Básico (Grátis)
         </button>
-        <button onclick="selecionarPlano('pago')" class="w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-blue-700 transition">
+        <button onclick="selecionarPlano('anual')" class="w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-blue-700 transition">
           Plano Completo - R$ 59,90/ano
         </button>
       </div>
