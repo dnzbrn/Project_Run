@@ -122,7 +122,118 @@ def gerar_plano_openai(prompt):
         print(f"Erro ao gerar plano com OpenAI: {e}")
         return "Erro ao gerar o plano. Tente novamente mais tarde."
 
-# Rota para iniciar o pagamento no Mercado Pago
+# Rotas de páginas
+@app.route("/")
+def landing():
+    return render_template("landing.html")
+
+@app.route("/seutreino")
+def seutreino():
+    return render_template("seutreino.html")
+
+@app.route("/sucesso")
+def sucesso():
+    return render_template("sucesso.html")
+
+@app.route("/erro")
+def erro():
+    return render_template("erro.html")
+
+@app.route("/pendente")
+def pendente():
+    return render_template("pendente.html")
+
+@app.route("/resultado")
+def resultado():
+    titulo = session.get("titulo", "Plano de Treino")
+    plano = session.get("plano", "Nenhum plano gerado.")
+    return render_template("resultado.html", titulo=titulo, plano=plano)
+
+# Processar formulário de CORRIDA (ATUALIZADO)
+@app.route("/generate", methods=["POST"])
+def generate():
+    dados_usuario = request.form
+    required_fields = ["email", "plano", "objetivo", "tempo_melhoria", "nivel", "dias", "tempo"]
+    
+    if not all(field in dados_usuario for field in required_fields):
+        return "Dados do formulário incompletos.", 400
+
+    email = dados_usuario["email"]
+    plano = dados_usuario["plano"]
+
+    if not pode_gerar_plano(email, plano):
+        if plano == "anual":
+            return redirect(url_for("iniciar_pagamento", email=email))
+        else:
+            return "Você já gerou um plano gratuito este mês. Atualize para o plano anual para gerar mais planos.", 400
+
+    prompt = f"""
+    Crie um plano SEMANAL de corrida para {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']},
+    distribuído em {dados_usuario['dias']} dias por semana, com sessões de {dados_usuario['tempo']} minutos cada.
+    
+    Detalhes:
+    - Nível: {dados_usuario['nivel']}
+    - Dias disponíveis: {dados_usuario['dias']} dias/semana
+    - Tempo diário: {dados_usuario['tempo']} minutos
+    - Objetivo principal: {dados_usuario['objetivo']}
+
+    Estruture o plano:
+    1. Divida os treinos nos {dados_usuario['dias']} dias disponíveis.
+    2. Para cada dia, especifique:
+       - Tipo de treino (ex.: longo, intervalado, regenerativo)
+       - Duração (em minutos)
+       - Intensidade (leve/moderado/intenso)
+       - Descrição breve do exercício
+    3. Inclua um dia de descanso se {dados_usuario['dias']} < 7.
+    """
+    
+    plano_gerado = gerar_plano_openai(prompt)
+    registrar_geracao(email, plano)
+
+    session["titulo"] = "Plano de Corrida"
+    session["plano"] = DISCLAIMER + plano_gerado
+    return redirect(url_for("resultado"))
+
+# Processar formulário de PACE (mantido como estava)
+@app.route("/generatePace", methods=["POST"])
+def generatePace():
+    dados_usuario = request.form
+    required_fields = ["email", "plano", "objetivo", "tempo_melhoria", "nivel", "dias", "tempo"]
+    
+    if not all(field in dados_usuario for field in required_fields):
+        return "Dados do formulário incompletos.", 400
+
+    email = dados_usuario["email"]
+    plano = dados_usuario["plano"]
+
+    if not pode_gerar_plano(email, plano):
+        if plano == "anual":
+            return redirect(url_for("iniciar_pagamento", email=email))
+        else:
+            return "Você já gerou um plano gratuito este mês. Atualize para o plano anual para gerar mais planos.", 400
+
+    prompt = f"""
+    Crie um plano detalhado para melhorar o pace de {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']}:
+    - Nível: {dados_usuario['nivel']}
+    - Dias disponíveis: {dados_usuario['dias']} dias/semana
+    - Tempo diário: {dados_usuario['tempo']} minutos
+
+    Para cada treino, forneça:
+    - Tipo de exercício (ex.: corrida leve, intervalados, tiros, etc.)
+    - Pace (ritmo de corrida) sugerido
+    - Tempo de duração do treino
+
+    Estruture o plano de forma semanal, listando os treinos por dia.
+    """
+    
+    plano_gerado = gerar_plano_openai(prompt)
+    registrar_geracao(email, plano)
+
+    session["titulo"] = "Plano de Pace"
+    session["plano"] = DISCLAIMER + plano_gerado
+    return redirect(url_for("resultado"))
+
+# Rotas de pagamento e webhook (mantidas como estavam)
 @app.route("/iniciar_pagamento", methods=["GET", "POST"])
 def iniciar_pagamento():
     if request.method == "POST":
@@ -135,7 +246,6 @@ def iniciar_pagamento():
 
     email = dados_usuario["email"]
 
-    # Registrar tentativa de pagamento
     try:
         db.execute(
             text("""
@@ -184,7 +294,6 @@ def iniciar_pagamento():
         print(f"Erro ao criar preferência de pagamento: {e}")
         return "Erro ao processar o pagamento. Tente novamente mais tarde.", 500
 
-# Rota para assinar o plano anual
 @app.route("/assinar_plano_anual", methods=["GET", "POST"])
 def assinar_plano_anual():
     if request.method == "POST":
@@ -197,7 +306,6 @@ def assinar_plano_anual():
 
     email = dados_usuario["email"]
 
-    # Registrar o email no banco imediatamente
     try:
         db.execute(
             text("""
@@ -213,100 +321,9 @@ def assinar_plano_anual():
 
     return redirect(url_for("iniciar_pagamento", email=email))
 
-# Rotas de páginas
-@app.route("/")
-def landing():
-    return render_template("landing.html")
-
-@app.route("/seutreino")
-def seutreino():
-    return render_template("seutreino.html")
-
-@app.route("/sucesso")
-def sucesso():
-    return render_template("sucesso.html")
-
-@app.route("/erro")
-def erro():
-    return render_template("erro.html")
-
-@app.route("/pendente")
-def pendente():
-    return render_template("pendente.html")
-
-@app.route("/resultado")
-def resultado():
-    titulo = session.get("titulo", "Plano de Treino")
-    plano = session.get("plano", "Nenhum plano gerado.")
-    return render_template("resultado.html", titulo=titulo, plano=plano)
-
-# Processar formulário de CORRIDA
-@app.route("/generate", methods=["POST"])
-def generate():
-    dados_usuario = request.form
-    required_fields = ["email", "plano", "objetivo", "tempo_melhoria", "nivel", "dias", "tempo"]
-    
-    if not all(field in dados_usuario for field in required_fields):
-        return "Dados do formulário incompletos.", 400
-
-    email = dados_usuario["email"]
-    plano = dados_usuario["plano"]
-
-    if not pode_gerar_plano(email, plano):
-        if plano == "anual":
-            return redirect(url_for("iniciar_pagamento", email=email))
-        else:
-            return "Você já gerou um plano gratuito este mês. Atualize para o plano anual para gerar mais planos.", 400
-
-    prompt = f"""
-Crie um plano detalhado de corrida para atingir o objetivo de {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']}:
-- Nível: {dados_usuario['nivel']}
-- Dias disponíveis: {dados_usuario['dias']}
-- Tempo diário: {dados_usuario['tempo']} minutos.
-    """
-    plano_gerado = gerar_plano_openai(prompt)
-    registrar_geracao(email, plano)
-
-    session["titulo"] = "Plano de Corrida"
-    session["plano"] = DISCLAIMER + plano_gerado
-    return redirect(url_for("resultado"))
-
-# Processar formulário de PACE
-@app.route("/generatePace", methods=["POST"])
-def generatePace():
-    dados_usuario = request.form
-    required_fields = ["email", "plano", "objetivo", "tempo_melhoria", "nivel", "dias", "tempo"]
-    
-    if not all(field in dados_usuario for field in required_fields):
-        return "Dados do formulário incompletos.", 400
-
-    email = dados_usuario["email"]
-    plano = dados_usuario["plano"]
-
-    if not pode_gerar_plano(email, plano):
-        if plano == "anual":
-            return redirect(url_for("iniciar_pagamento", email=email))
-        else:
-            return "Você já gerou um plano gratuito este mês. Atualize para o plano anual para gerar mais planos.", 400
-
-    prompt = f"""
-Crie um plano detalhado para melhorar o pace de {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']}:
-- Nível: {dados_usuario['nivel']}
-- Dias disponíveis: {dados_usuario['dias']}
-- Tempo diário: {dados_usuario['tempo']} minutos.
-    """
-    plano_gerado = gerar_plano_openai(prompt)
-    registrar_geracao(email, plano)
-
-    session["titulo"] = "Plano de Pace"
-    session["plano"] = DISCLAIMER + plano_gerado
-    return redirect(url_for("resultado"))
-
-# Webhook do Mercado Pago
 @app.route("/webhook/mercadopago", methods=["POST"])
 def mercadopago_webhook():
     try:
-        # Registrar recebimento do webhook
         payload = request.json
         signature = request.headers.get("X-Signature")
         
@@ -325,7 +342,6 @@ def mercadopago_webhook():
         if not validar_assinatura(request.get_data(), signature):
             raise ValueError("Assinatura inválida")
 
-        # Atualizar status do log
         db.execute(
             text("""
                 UPDATE logs_webhook
@@ -341,7 +357,6 @@ def mercadopago_webhook():
             payment_id = payload.get("data", {}).get("id")
             status = payload.get("data", {}).get("status")
             
-            # Verificar se já existe antes de inserir
             pagamento_existente = db.execute(
                 text("SELECT 1 FROM pagamentos WHERE payment_id = :payment_id"),
                 {"payment_id": payment_id}
@@ -363,14 +378,12 @@ def mercadopago_webhook():
             email = payload.get("data", {}).get("payer", {}).get("email")
 
             if email:
-                # Verificar se o usuário existe
                 usuario = db.execute(
                     text("SELECT id FROM usuarios WHERE email = :email"),
                     {"email": email}
                 ).fetchone()
 
                 if not usuario:
-                    # Criar usuário se não existir
                     db.execute(
                         text("""
                             INSERT INTO usuarios (email, data_inscricao)
@@ -384,7 +397,6 @@ def mercadopago_webhook():
                 else:
                     usuario_id = usuario[0]
 
-                # Registrar/atualizar assinatura
                 db.execute(
                     text("""
                         INSERT INTO assinaturas (subscription_id, usuario_id, status, data_atualizacao)
@@ -401,7 +413,6 @@ def mercadopago_webhook():
                 )
                 db.commit()
 
-        # Registrar sucesso
         db.execute(
             text("""
                 UPDATE logs_webhook
@@ -427,7 +438,6 @@ def mercadopago_webhook():
         db.commit()
         return jsonify({"error": str(e)}), 500
 
-# Iniciar servidor
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(debug=True, host="0.0.0.0", port=port)
