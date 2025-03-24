@@ -11,6 +11,7 @@ import json
 from flask_mail import Mail, Message
 from io import BytesIO
 import base64
+import logging
 
 # ================================================
 # CONFIGURAÇÕES INICIAIS
@@ -44,6 +45,10 @@ mail = Mail(app)
 
 # Variáveis globais
 DISCLAIMER = "Este plano é gerado automaticamente. Consulte um profissional para ajustes personalizados.\n\n"
+
+# Configuração de logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # ================================================
 # FUNÇÕES AUXILIARES
@@ -125,7 +130,7 @@ def gerar_plano_openai(prompt):
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
-        print(f"Erro ao gerar plano com OpenAI: {e}")
+        logger.error(f"Erro ao gerar plano com OpenAI: {e}")
         return "Erro ao gerar o plano. Tente novamente mais tarde."
 
 # ================================================
@@ -262,7 +267,7 @@ def iniciar_pagamento():
         )
         db.commit()
     except Exception as e:
-        print(f"Erro ao registrar tentativa de pagamento: {e}")
+        logger.error(f"Erro ao registrar tentativa de pagamento: {e}")
 
     payload = {
         "items": [{
@@ -293,7 +298,7 @@ def iniciar_pagamento():
         response.raise_for_status()
         return redirect(response.json()["init_point"])
     except Exception as e:
-        print(f"Erro ao criar preferência de pagamento: {e}")
+        logger.error(f"Erro ao criar preferência de pagamento: {e}")
         return "Erro ao processar o pagamento. Tente novamente mais tarde.", 500
 
 @app.route("/assinar_plano_anual", methods=["GET", "POST"])
@@ -312,7 +317,7 @@ def assinar_plano_anual():
         )
         db.commit()
     except Exception as e:
-        print(f"Erro ao registrar email: {e}")
+        logger.error(f"Erro ao registrar email: {e}")
 
     return redirect(url_for("iniciar_pagamento", email=email))
 
@@ -374,7 +379,7 @@ def mercadopago_webhook():
         return jsonify({"status": "success"}), 200
 
     except Exception as e:
-        print("Erro ao processar webhook:", str(e))
+        logger.error(f"Erro ao processar webhook: {str(e)}")
         db.execute(
             text("UPDATE logs_webhook SET status_processamento = 'erro', mensagem_erro = :mensagem WHERE id = (SELECT MAX(id) FROM logs_webhook)"),
             {"mensagem": str(e)}
@@ -385,52 +390,94 @@ def mercadopago_webhook():
 @app.route('/send_plan_email', methods=['POST'])
 def send_plan_email():
     try:
-        data = request.json
-        recipient = data['email']
-        pdf_data = data.get('pdfData')
-        
-        if not pdf_data:
-            return jsonify({"success": False, "message": "Dados do PDF ausentes"}), 400
+        # Verifica se a requisição é JSON
+        if not request.is_json:
+            return jsonify({
+                "success": False,
+                "message": "Content-Type must be application/json"
+            }), 400
 
-        # Corpo do e-mail com HTML profissional
-        email_body = f"""
+        data = request.get_json()
+        recipient = data.get('email')
+        pdf_data = data.get('pdfData')
+
+        if not recipient or not pdf_data:
+            return jsonify({
+                "success": False,
+                "message": "E-mail e PDF são obrigatórios"
+            }), 400
+
+        # HTML do e-mail profissional
+        email_html = f"""
         <!DOCTYPE html>
         <html>
         <head>
             <style>
-                body {{ font-family: 'Arial', sans-serif; color: #333; }}
-                .header {{ background-color: #2563eb; padding: 20px; text-align: center; }}
-                .logo {{ max-width: 200px; }}
-                .content {{ padding: 20px; line-height: 1.6; }}
-                .footer {{ background-color: #f3f4f6; padding: 15px; text-align: center; font-size: 12px; }}
-                .btn {{ background-color: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; }}
+                body {{ 
+                    font-family: 'Arial', sans-serif; 
+                    line-height: 1.6; 
+                    color: #333; 
+                    max-width: 600px; 
+                    margin: 0 auto; 
+                    padding: 20px;
+                }}
+                .header {{ 
+                    background-color: #2563eb; 
+                    padding: 20px; 
+                    text-align: center; 
+                    border-radius: 8px 8px 0 0;
+                }}
+                .content {{ 
+                    padding: 20px; 
+                    background-color: #f9fafb;
+                    border-radius: 0 0 8px 8px;
+                }}
+                .footer {{ 
+                    text-align: center; 
+                    font-size: 12px; 
+                    color: #666; 
+                    margin-top: 20px;
+                }}
+                .btn {{ 
+                    display: inline-block; 
+                    background-color: #2563eb; 
+                    color: white; 
+                    padding: 12px 24px; 
+                    text-decoration: none; 
+                    border-radius: 5px; 
+                    margin: 15px 0;
+                    font-weight: bold;
+                }}
+                h1 {{ color: white; margin: 0; }}
+                h2 {{ color: #2563eb; }}
             </style>
         </head>
         <body>
             <div class="header">
-                <img src="https://treinorun.com.br/logo.png" alt="TreinoRun" class="logo">
+                <h1>TreinoRun</h1>
             </div>
             
             <div class="content">
                 <h2>Obrigado por utilizar nossos serviços!</h2>
-                <p>Segue em anexo seu plano de treino personalizado.</p>
-                <p>Qualquer dúvida, estamos à disposição através deste e-mail ou em nosso site.</p>
-                <br>
-                <a href="https://treinorun.com.br" class="btn">Acesse Nosso Site</a>
+                <p>Segue em anexo o seu plano de treino personalizado.</p>
+                <p>Você pode acessar nosso site para mais informações:</p>
+                <a href="https://treinorun.com.br" class="btn">Acessar TreinoRun</a>
+                <p>Atenciosamente,<br>Equipe TreinoRun</p>
             </div>
             
             <div class="footer">
-                <p>TreinoRun © {datetime.now().year}. Todos os direitos reservados.</p>
+                <p>TreinoRun © {datetime.now().year} | Todos os direitos reservados</p>
                 <p>Este é um e-mail automático, por favor não responda.</p>
             </div>
         </body>
         </html>
         """
 
+        # Configura a mensagem
         msg = Message(
             subject="Seu Plano de Treino - TreinoRun",
             recipients=[recipient],
-            html=email_body
+            html=email_html
         )
 
         # Anexa o PDF
@@ -440,12 +487,22 @@ def send_plan_email():
             "application/pdf",
             BytesIO(pdf_content).read()
         )
-        
+
+        # Envia o e-mail
         mail.send(msg)
-        return jsonify({"success": True, "message": "E-mail enviado com sucesso!"})
+        logger.info(f"E-mail enviado para: {recipient}")
         
+        return jsonify({
+            "success": True,
+            "message": "E-mail enviado com sucesso!"
+        })
+
     except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 500
+        logger.error(f"Erro ao enviar e-mail: {str(e)}")
+        return jsonify({
+            "success": False,
+            "message": "Erro ao processar o envio do e-mail"
+        }), 500
 
 # ================================================
 # INICIALIZAÇÃO

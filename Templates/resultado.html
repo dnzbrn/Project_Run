@@ -4,39 +4,47 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Biblioteca jsPDF para gerar PDF -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <title>{{ titulo }}</title>
+  <style>
+    .loading-spinner {
+      display: inline-block;
+      width: 1em;
+      height: 1em;
+      border: 2px solid rgba(255,255,255,.3);
+      border-radius: 50%;
+      border-top-color: #fff;
+      animation: spin 1s ease-in-out infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    #emailForm {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      margin-top: 15px;
+    }
+    #recipientEmail {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 16px;
+      margin-bottom: 15px;
+    }
+    #recipientEmail:focus {
+      border-color: #2563eb;
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+    }
+  </style>
 </head>
 <body class="bg-gray-100 min-h-screen flex flex-col items-center">
   <!-- Cabeçalho com o nome do treino -->
   <header class="bg-white w-full shadow-lg p-6 text-center">
     <h1 class="text-4xl font-extrabold text-blue-700">{{ titulo }}</h1>
-
-<style>
-    /* Estilos para o modal de e-mail */
-    #emailForm {
-        transition: all 0.3s ease;
-        background: white;
-        padding: 20px;
-        border-radius: 8px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    }
-    #recipientEmail {
-        width: 100%;
-        padding: 12px;
-        border: 2px solid #e2e8f0;
-        border-radius: 8px;
-        font-size: 16px;
-        margin-bottom: 15px;
-    }
-    #recipientEmail:focus {
-        border-color: #2563eb;
-        outline: none;
-        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
-    }
-</style>
-
   </header>
 
   <!-- Conteúdo principal -->
@@ -63,7 +71,7 @@
 
   <!-- Rodapé -->
   <footer class="bg-gray-200 w-full py-4 text-center">
-    <p class="text-sm text-gray-700">&copy; 2025 Sua Marca. Todos os direitos reservados.</p>
+    <p class="text-sm text-gray-700">&copy; 2025 TreinoRun. Todos os direitos reservados.</p>
   </footer>
 
   <!-- Modal de Compartilhar -->
@@ -73,7 +81,7 @@
       <div class="flex flex-col gap-4">
         <!-- Opção WhatsApp -->
         <a id="whatsappLink" href="#" target="_blank" class="bg-teal-600 text-white font-bold py-3 px-6 rounded-full text-center hover:bg-teal-700 transition duration-300 shadow-lg">
-          Enviar por WhatsApp
+          WhatsApp
         </a>
         <!-- Opção Baixar PDF -->
         <button onclick="downloadPDF()" class="bg-red-600 text-white font-bold py-3 px-6 rounded-full hover:bg-red-700 transition duration-300 shadow-lg">
@@ -85,9 +93,9 @@
         </button>
         <!-- Formulário para inserir e-mail -->
         <div id="emailForm" class="hidden flex flex-col gap-4">
-          <input type="email" id="recipientEmail" placeholder="Digite seu e-mail" class="border p-3 rounded-lg" />
-          <button onclick="sendEmailPDF()" class="bg-green-600 text-white font-bold py-3 px-6 rounded-full hover:bg-green-700 transition duration-300 shadow-lg">
-            Enviar E-mail
+          <input type="email" id="recipientEmail" placeholder="Digite o e-mail" class="border p-3 rounded-lg" required />
+          <button onclick="sendEmail()" class="bg-green-600 text-white font-bold py-3 px-6 rounded-full hover:bg-green-700 transition duration-300 shadow-lg">
+            Enviar
           </button>
         </div>
       </div>
@@ -98,103 +106,113 @@
   </div>
 
   <script>
-    // Alterna a exibição do modal de compartilhar
+    const { jsPDF } = window.jspdf;
+
+    // Alterna o modal de compartilhamento
     function toggleShareModal() {
-      const modal = document.getElementById('shareModal');
-      modal.classList.toggle('hidden');
-      // Ao fechar o modal, também oculta o formulário de e-mail, se estiver aberto
+      document.getElementById('shareModal').classList.toggle('hidden');
       document.getElementById('emailForm').classList.add('hidden');
     }
 
-    // Alterna o formulário de e-mail dentro do modal
+    // Alterna o formulário de e-mail
     function toggleEmailForm() {
-      const emailForm = document.getElementById('emailForm');
-      emailForm.classList.toggle('hidden');
+      document.getElementById('emailForm').classList.toggle('hidden');
     }
 
-    // Atualiza o link do WhatsApp com o conteúdo do plano e mensagem personalizada
+    // Configura o link do WhatsApp ao carregar a página
     window.addEventListener('DOMContentLoaded', () => {
       const plano = document.getElementById('planoContent').innerText;
       const titulo = document.title;
-      const whatsappMessage = "Parabéns por cuidar da sua saúde! Aqui está o seu plano de treino:\n\n" + plano;
-      const encodedWhatsappMessage = encodeURIComponent(whatsappMessage);
-      const whatsappLink = document.getElementById('whatsappLink');
-      whatsappLink.href = `https://api.whatsapp.com/send?text=${encodedWhatsappMessage}`;
+      const whatsappMessage = `Confira meu plano de treino "${titulo}":\n\n${plano}`;
+      document.getElementById('whatsappLink').href = `https://api.whatsapp.com/send?text=${encodeURIComponent(whatsappMessage)}`;
     });
 
-    // Função para gerar e baixar o PDF com nome personalizado
+    // Gera e baixa o PDF
     function downloadPDF() {
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF('p', 'mm', 'a4');
+      const doc = new jsPDF();
       const content = document.getElementById('planoContent').innerText;
       const lines = doc.splitTextToSize(content, 180);
+      
       let y = 10;
-      const lineHeight = 10;
       lines.forEach(line => {
         if (y > 280) {
           doc.addPage();
           y = 10;
         }
         doc.text(line, 10, y);
-        y += lineHeight;
+        y += 10;
       });
-      // Define o nome do arquivo com base no tipo de treino e data atual
-      let trainingType = "";
-      const titulo = document.title.toLowerCase();
-      if (titulo.includes("corrida")) {
-        trainingType = "TREINO_CORRIDA";
-      } else if (titulo.includes("pace")) {
-        trainingType = "TREINO_PACE";
-      } else {
-        trainingType = "TREINO";
-      }
-      const today = new Date().toISOString().slice(0,10).replace(/-/g, '');
-      const filename = `${today}_${trainingType}.pdf`;
+      
+      const filename = `Treino_${new Date().toISOString().slice(0,10)}.pdf`;
       doc.save(filename);
     }
 
-    // Função para gerar o PDF e enviá-lo por e-mail via AJAX
-    async function sendEmailPDF() {
-      const email = document.getElementById('recipientEmail').value;
-      if (!email) {
-        alert('Por favor, insira um e-mail.');
+    // Envia o plano por e-mail
+    async function sendEmail() {
+      const emailInput = document.getElementById('recipientEmail');
+      const email = emailInput.value.trim();
+      const sendBtn = document.querySelector('#emailForm button');
+      
+      if (!email || !email.includes('@')) {
+        alert('Por favor, insira um e-mail válido.');
         return;
       }
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF('p', 'mm', 'a4');
-      const content = document.getElementById('planoContent').innerText;
-      const lines = doc.splitTextToSize(content, 180);
-      let y = 10;
-      const lineHeight = 10;
-      lines.forEach(line => {
-        if (y > 280) {
-          doc.addPage();
-          y = 10;
-        }
-        doc.text(line, 10, y);
-        y += lineHeight;
-      });
-      // Gera o PDF como Data URI
-      const dataUri = doc.output('datauristring');
-      
-      // Envia o PDF para o backend para envio por e-mail
+
+      sendBtn.disabled = true;
+      sendBtn.innerHTML = 'Enviando <span class="loading-spinner"></span>';
+
       try {
-        const response = await fetch('/send_email', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ recipient: email, pdfData: dataUri })
+        // 1. Gerar PDF
+        const doc = new jsPDF();
+        const content = document.getElementById('planoContent').innerText;
+        const lines = doc.splitTextToSize(content, 180);
+        let y = 10;
+        lines.forEach(line => {
+          if (y > 280) {
+            doc.addPage();
+            y = 10;
+          }
+          doc.text(line, 10, y);
+          y += 10;
         });
-        const result = await response.json();
-        if (result.status === "success") {
-          alert('E-mail enviado com sucesso!');
-          // Opcional: limpar o campo e fechar o formulário
-          document.getElementById('recipientEmail').value = '';
-          document.getElementById('emailForm').classList.add('hidden');
-        } else {
-          alert('Erro ao enviar e-mail: ' + result.message);
+        const pdfData = doc.output('datauristring');
+
+        // 2. Enviar para o backend
+        const response = await fetch('/send_plan_email', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify({ 
+            email: email,
+            pdfData: pdfData 
+          })
+        });
+
+        // 3. Verificar se a resposta é JSON
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          const text = await response.text();
+          throw new Error(`Resposta inválida: ${text.slice(0, 100)}...`);
         }
+
+        const result = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(result.message || 'Erro no servidor');
+        }
+
+        alert('✅ E-mail enviado com sucesso!');
+        emailInput.value = '';
+        toggleEmailForm();
+        
       } catch (error) {
-        alert('Erro: ' + error.message);
+        console.error('Erro:', error);
+        alert(`❌ Falha no envio: ${error.message}`);
+      } finally {
+        sendBtn.disabled = false;
+        sendBtn.innerHTML = 'Enviar';
       }
     }
   </script>
