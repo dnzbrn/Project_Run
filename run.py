@@ -83,7 +83,7 @@ def registrar_geracao(email, plano):
                 INSERT INTO usuarios (email, plano, data_inscricao, ultima_geracao)
                 VALUES (:email, :plano, :data_inscricao, :ultima_geracao)
             """),
-            {"email": email, "plano": plano, "data_inscricao": hoje, "ultima_geracao": hoye},
+            {"email": email, "plano": plano, "data_inscricao": hoje, "ultima_geracao": hoje},
         )
         db.commit()
 
@@ -101,7 +101,7 @@ def registrar_geracao(email, plano):
 
     db.execute(
         text("INSERT INTO geracoes (usuario_id, data_geracao) VALUES (:usuario_id, :data_geracao)"),
-        {"usuario_id": usuario_id, "data_geracao": hoye},
+        {"usuario_id": usuario_id, "data_geracao": hoje},
     )
     db.commit()
 
