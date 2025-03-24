@@ -8,6 +8,13 @@ import hashlib
 from openai import OpenAI
 import requests
 import json
+from flask_mail import Mail, Message
+from io import BytesIO
+import base64
+
+# ================================================
+# CONFIGURAÇÕES INICIAIS
+# ================================================
 
 # Configuração do Flask
 template_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Templates")
@@ -26,20 +33,32 @@ MERCADO_PAGO_WEBHOOK_SECRET = os.getenv("MERCADO_PAGO_WEBHOOK_SECRET")
 # Configuração da OpenAI
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# Variável de disclaimer
+# Configuração do Flask-Mail para Zoho Mail
+app.config['MAIL_SERVER'] = 'smtp.zoho.com'
+app.config['MAIL_PORT'] = 587
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USERNAME'] = os.getenv('ZOHO_EMAIL')
+app.config['MAIL_PASSWORD'] = os.getenv('ZOHO_PASSWORD')
+app.config['MAIL_DEFAULT_SENDER'] = os.getenv('ZOHO_EMAIL')
+mail = Mail(app)
+
+# Variáveis globais
 DISCLAIMER = "Este plano é gerado automaticamente. Consulte um profissional para ajustes personalizados.\n\n"
 
-# Função para validar a assinatura do webhook
+# ================================================
+# FUNÇÕES AUXILIARES
+# ================================================
+
 def validar_assinatura(body, signature):
+    """Valida a assinatura do webhook do Mercado Pago"""
     if not MERCADO_PAGO_WEBHOOK_SECRET:
         raise ValueError("Assinatura secreta do webhook não configurada.")
-
     chave_secreta = MERCADO_PAGO_WEBHOOK_SECRET.encode("utf-8")
     assinatura_esperada = hmac.new(chave_secreta, body, hashlib.sha256).hexdigest()
     return hmac.compare_digest(assinatura_esperada, signature)
 
-# Função para verificar se o usuário pode gerar um plano
 def pode_gerar_plano(email, plano):
+    """Verifica se o usuário pode gerar um novo plano"""
     usuario = db.execute(
         text("SELECT * FROM usuarios WHERE email = :email"),
         {"email": email}
@@ -51,27 +70,20 @@ def pode_gerar_plano(email, plano):
                 text("SELECT status FROM assinaturas WHERE usuario_id = :usuario_id ORDER BY id DESC LIMIT 1"),
                 {"usuario_id": usuario["id"]}
             ).mappings().fetchone()
-
-            if assinatura and assinatura["status"] == "active":
-                return True
+            return assinatura and assinatura["status"] == "active"
         return False
 
     elif plano == "gratuito":
-        if usuario:
-            ultima_geracao = usuario["ultima_geracao"]
-            if ultima_geracao:
-                ultima_geracao = datetime.strptime(str(ultima_geracao), "%Y-%m-%d %H:%M:%S")
-                hoje = datetime.now()
-                if (hoje - ultima_geracao).days < 30:
-                    return False
+        if usuario and usuario["ultima_geracao"]:
+            ultima_geracao = datetime.strptime(str(usuario["ultima_geracao"]), "%Y-%m-%d %H:%M:%S")
+            return (datetime.now() - ultima_geracao).days >= 30
         return True
 
     return False
 
-# Função para registrar a geração de um plano
 def registrar_geracao(email, plano):
+    """Registra a geração de um novo plano no banco de dados"""
     hoje = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
     usuario = db.execute(
         text("SELECT * FROM usuarios WHERE email = :email"),
         {"email": email}
@@ -85,13 +97,7 @@ def registrar_geracao(email, plano):
             """),
             {"email": email, "plano": plano, "data_inscricao": hoje, "ultima_geracao": hoje},
         )
-        db.commit()
-
-        usuario = db.execute(
-            text("SELECT id FROM usuarios WHERE email = :email"),
-            {"email": email}
-        ).mappings().fetchone()
-        usuario_id = usuario["id"]
+        usuario_id = db.execute(text("SELECT id FROM usuarios WHERE email = :email"), {"email": email}).fetchone()[0]
     else:
         db.execute(
             text("UPDATE usuarios SET ultima_geracao = :ultima_geracao, plano = :plano WHERE email = :email"),
@@ -105,8 +111,8 @@ def registrar_geracao(email, plano):
     )
     db.commit()
 
-# Função para gerar o plano de treino
 def gerar_plano_openai(prompt):
+    """Gera o plano de treino usando a API da OpenAI"""
     try:
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
@@ -122,7 +128,10 @@ def gerar_plano_openai(prompt):
         print(f"Erro ao gerar plano com OpenAI: {e}")
         return "Erro ao gerar o plano. Tente novamente mais tarde."
 
-# Rotas de páginas
+# ================================================
+# ROTAS PRINCIPAIS
+# ================================================
+
 @app.route("/")
 def landing():
     return render_template("landing.html")
@@ -149,7 +158,10 @@ def resultado():
     plano = session.get("plano", "Nenhum plano gerado.")
     return render_template("resultado.html", titulo=titulo, plano=plano)
 
-# Processar formulário de CORRIDA (ATUALIZADO)
+# ================================================
+# ROTAS DE GERACAO DE PLANOS
+# ================================================
+
 @app.route("/generate", methods=["POST"])
 def generate():
     dados_usuario = request.form
@@ -164,8 +176,7 @@ def generate():
     if not pode_gerar_plano(email, plano):
         if plano == "anual":
             return redirect(url_for("iniciar_pagamento", email=email))
-        else:
-            return "Você já gerou um plano gratuito este mês. Atualize para o plano anual para gerar mais planos.", 400
+        return "Você já gerou um plano gratuito este mês. Atualize para o plano anual para gerar mais planos.", 400
 
     prompt = f"""
     Crie um plano SEMANAL de corrida para {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']},
@@ -194,7 +205,6 @@ def generate():
     session["plano"] = DISCLAIMER + plano_gerado
     return redirect(url_for("resultado"))
 
-# Processar formulário de PACE (mantido como estava)
 @app.route("/generatePace", methods=["POST"])
 def generatePace():
     dados_usuario = request.form
@@ -209,8 +219,7 @@ def generatePace():
     if not pode_gerar_plano(email, plano):
         if plano == "anual":
             return redirect(url_for("iniciar_pagamento", email=email))
-        else:
-            return "Você já gerou um plano gratuito este mês. Atualize para o plano anual para gerar mais planos.", 400
+        return "Você já gerou um plano gratuito este mês. Atualize para o plano anual para gerar mais planos.", 400
 
     prompt = f"""
     Crie um plano detalhado para melhorar o pace de {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']}:
@@ -233,13 +242,13 @@ def generatePace():
     session["plano"] = DISCLAIMER + plano_gerado
     return redirect(url_for("resultado"))
 
-# Rotas de pagamento e webhook (mantidas como estavam)
+# ================================================
+# ROTAS DE PAGAMENTO E ASSINATURA
+# ================================================
+
 @app.route("/iniciar_pagamento", methods=["GET", "POST"])
 def iniciar_pagamento():
-    if request.method == "POST":
-        dados_usuario = request.form
-    else:
-        dados_usuario = request.args
+    dados_usuario = request.form if request.method == "POST" else request.args
 
     if "email" not in dados_usuario:
         return "Email não fornecido.", 400
@@ -248,34 +257,21 @@ def iniciar_pagamento():
 
     try:
         db.execute(
-            text("""
-                INSERT INTO tentativas_pagamento (email, data_tentativa)
-                VALUES (:email, NOW())
-            """),
+            text("INSERT INTO tentativas_pagamento (email, data_tentativa) VALUES (:email, NOW())"),
             {"email": email}
         )
         db.commit()
     except Exception as e:
         print(f"Erro ao registrar tentativa de pagamento: {e}")
 
-    MERCADO_PAGO_URL = "https://api.mercadopago.com/checkout/preferences"
-    headers = {
-        "Authorization": f"Bearer {MERCADO_PAGO_ACCESS_TOKEN}",
-        "Content-Type": "application/json",
-    }
-
     payload = {
-        "items": [
-            {
-                "title": "Plano Anual de Treino",
-                "quantity": 1,
-                "unit_price": 59.9,
-                "currency_id": "BRL",
-            }
-        ],
-        "payer": {
-            "email": email,
-        },
+        "items": [{
+            "title": "Plano Anual de Treino",
+            "quantity": 1,
+            "unit_price": 59.9,
+            "currency_id": "BRL",
+        }],
+        "payer": {"email": email},
         "back_urls": {
             "success": "https://treinorun.com.br/sucesso",
             "failure": "https://treinorun.com.br/erro",
@@ -286,20 +282,23 @@ def iniciar_pagamento():
     }
 
     try:
-        response = requests.post(MERCADO_PAGO_URL, headers=headers, json=payload)
+        response = requests.post(
+            "https://api.mercadopago.com/checkout/preferences",
+            headers={
+                "Authorization": f"Bearer {MERCADO_PAGO_ACCESS_TOKEN}",
+                "Content-Type": "application/json",
+            },
+            json=payload
+        )
         response.raise_for_status()
-        data = response.json()
-        return redirect(data["init_point"])
+        return redirect(response.json()["init_point"])
     except Exception as e:
         print(f"Erro ao criar preferência de pagamento: {e}")
         return "Erro ao processar o pagamento. Tente novamente mais tarde.", 500
 
 @app.route("/assinar_plano_anual", methods=["GET", "POST"])
 def assinar_plano_anual():
-    if request.method == "POST":
-        dados_usuario = request.form
-    else:
-        dados_usuario = request.args
+    dados_usuario = request.form if request.method == "POST" else request.args
 
     if "email" not in dados_usuario:
         return "Email não fornecido.", 400
@@ -308,11 +307,7 @@ def assinar_plano_anual():
 
     try:
         db.execute(
-            text("""
-                INSERT INTO usuarios (email, data_inscricao)
-                VALUES (:email, NOW())
-                ON CONFLICT (email) DO NOTHING
-            """),
+            text("INSERT INTO usuarios (email, data_inscricao) VALUES (:email, NOW()) ON CONFLICT (email) DO NOTHING"),
             {"email": email}
         )
         db.commit()
@@ -321,6 +316,10 @@ def assinar_plano_anual():
 
     return redirect(url_for("iniciar_pagamento", email=email))
 
+# ================================================
+# WEBHOOK E EMAIL
+# ================================================
+
 @app.route("/webhook/mercadopago", methods=["POST"])
 def mercadopago_webhook():
     try:
@@ -328,28 +327,13 @@ def mercadopago_webhook():
         signature = request.headers.get("X-Signature")
         
         db.execute(
-            text("""
-                INSERT INTO logs_webhook (payload, status_processamento)
-                VALUES (:payload, 'recebido')
-            """),
+            text("INSERT INTO logs_webhook (payload, status_processamento) VALUES (:payload, 'recebido')"),
             {"payload": json.dumps(payload)}
         )
         db.commit()
 
-        if not signature:
-            raise ValueError("Assinatura não fornecida")
-
-        if not validar_assinatura(request.get_data(), signature):
+        if not signature or not validar_assinatura(request.get_data(), signature):
             raise ValueError("Assinatura inválida")
-
-        db.execute(
-            text("""
-                UPDATE logs_webhook
-                SET status_processamento = 'processando'
-                WHERE id = (SELECT MAX(id) FROM logs_webhook)
-            """)
-        )
-        db.commit()
 
         evento = payload.get("action")
         
@@ -357,20 +341,11 @@ def mercadopago_webhook():
             payment_id = payload.get("data", {}).get("id")
             status = payload.get("data", {}).get("status")
             
-            pagamento_existente = db.execute(
-                text("SELECT 1 FROM pagamentos WHERE payment_id = :payment_id"),
-                {"payment_id": payment_id}
-            ).fetchone()
-            
-            if not pagamento_existente:
+            if not db.execute(text("SELECT 1 FROM pagamentos WHERE payment_id = :payment_id"), {"payment_id": payment_id}).fetchone():
                 db.execute(
-                    text("""
-                        INSERT INTO pagamentos (payment_id, status, data_pagamento)
-                        VALUES (:payment_id, :status, NOW())
-                    """),
+                    text("INSERT INTO pagamentos (payment_id, status, data_pagamento) VALUES (:payment_id, :status, NOW())"),
                     {"payment_id": payment_id, "status": status},
                 )
-                db.commit()
 
         elif evento == "subscription.updated":
             subscription_id = payload.get("data", {}).get("id")
@@ -378,22 +353,10 @@ def mercadopago_webhook():
             email = payload.get("data", {}).get("payer", {}).get("email")
 
             if email:
-                usuario = db.execute(
-                    text("SELECT id FROM usuarios WHERE email = :email"),
-                    {"email": email}
-                ).fetchone()
-
+                usuario = db.execute(text("SELECT id FROM usuarios WHERE email = :email"), {"email": email}).fetchone()
                 if not usuario:
-                    db.execute(
-                        text("""
-                            INSERT INTO usuarios (email, data_inscricao)
-                            VALUES (:email, NOW())
-                            RETURNING id
-                        """),
-                        {"email": email}
-                    )
+                    db.execute(text("INSERT INTO usuarios (email, data_inscricao) VALUES (:email, NOW()) RETURNING id"), {"email": email})
                     usuario_id = db.fetchone()[0]
-                    db.commit()
                 else:
                     usuario_id = usuario[0]
 
@@ -402,41 +365,91 @@ def mercadopago_webhook():
                         INSERT INTO assinaturas (subscription_id, usuario_id, status, data_atualizacao)
                         VALUES (:subscription_id, :usuario_id, :status, NOW())
                         ON CONFLICT (subscription_id) DO UPDATE
-                        SET status = EXCLUDED.status,
-                            data_atualizacao = NOW()
+                        SET status = EXCLUDED.status, data_atualizacao = NOW()
                     """),
-                    {
-                        "subscription_id": subscription_id,
-                        "usuario_id": usuario_id,
-                        "status": status
-                    },
+                    {"subscription_id": subscription_id, "usuario_id": usuario_id, "status": status},
                 )
-                db.commit()
 
-        db.execute(
-            text("""
-                UPDATE logs_webhook
-                SET status_processamento = 'sucesso'
-                WHERE id = (SELECT MAX(id) FROM logs_webhook)
-            """)
-        )
         db.commit()
-
         return jsonify({"status": "success"}), 200
 
     except Exception as e:
         print("Erro ao processar webhook:", str(e))
         db.execute(
-            text("""
-                UPDATE logs_webhook
-                SET status_processamento = 'erro',
-                    mensagem_erro = :mensagem
-                WHERE id = (SELECT MAX(id) FROM logs_webhook)
-            """),
+            text("UPDATE logs_webhook SET status_processamento = 'erro', mensagem_erro = :mensagem WHERE id = (SELECT MAX(id) FROM logs_webhook)"),
             {"mensagem": str(e)}
         )
         db.commit()
         return jsonify({"error": str(e)}), 500
+
+@app.route('/send_plan_email', methods=['POST'])
+def send_plan_email():
+    try:
+        data = request.json
+        recipient = data['email']
+        pdf_data = data.get('pdfData')
+        
+        if not pdf_data:
+            return jsonify({"success": False, "message": "Dados do PDF ausentes"}), 400
+
+        # Corpo do e-mail com HTML profissional
+        email_body = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <style>
+                body {{ font-family: 'Arial', sans-serif; color: #333; }}
+                .header {{ background-color: #2563eb; padding: 20px; text-align: center; }}
+                .logo {{ max-width: 200px; }}
+                .content {{ padding: 20px; line-height: 1.6; }}
+                .footer {{ background-color: #f3f4f6; padding: 15px; text-align: center; font-size: 12px; }}
+                .btn {{ background-color: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; }}
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <img src="https://treinorun.com.br/logo.png" alt="TreinoRun" class="logo">
+            </div>
+            
+            <div class="content">
+                <h2>Obrigado por utilizar nossos serviços!</h2>
+                <p>Segue em anexo seu plano de treino personalizado.</p>
+                <p>Qualquer dúvida, estamos à disposição através deste e-mail ou em nosso site.</p>
+                <br>
+                <a href="https://treinorun.com.br" class="btn">Acesse Nosso Site</a>
+            </div>
+            
+            <div class="footer">
+                <p>TreinoRun © {datetime.now().year}. Todos os direitos reservados.</p>
+                <p>Este é um e-mail automático, por favor não responda.</p>
+            </div>
+        </body>
+        </html>
+        """
+
+        msg = Message(
+            subject="Seu Plano de Treino - TreinoRun",
+            recipients=[recipient],
+            html=email_body
+        )
+
+        # Anexa o PDF
+        pdf_content = base64.b64decode(pdf_data.split(',')[1])
+        msg.attach(
+            "plano_treino.pdf",
+            "application/pdf",
+            BytesIO(pdf_content).read()
+        )
+        
+        mail.send(msg)
+        return jsonify({"success": True, "message": "E-mail enviado com sucesso!"})
+        
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+# ================================================
+# INICIALIZAÇÃO
+# ================================================
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))

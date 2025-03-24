@@ -12,6 +12,31 @@
   <!-- Cabeçalho com o nome do treino -->
   <header class="bg-white w-full shadow-lg p-6 text-center">
     <h1 class="text-4xl font-extrabold text-blue-700">{{ titulo }}</h1>
+
+<style>
+    /* Estilos para o modal de e-mail */
+    #emailForm {
+        transition: all 0.3s ease;
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    #recipientEmail {
+        width: 100%;
+        padding: 12px;
+        border: 2px solid #e2e8f0;
+        border-radius: 8px;
+        font-size: 16px;
+        margin-bottom: 15px;
+    }
+    #recipientEmail:focus {
+        border-color: #2563eb;
+        outline: none;
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+    }
+</style>
+
   </header>
 
   <!-- Conteúdo principal -->
