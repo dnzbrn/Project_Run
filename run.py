@@ -6,7 +6,8 @@ from datetime import datetime
 import hmac
 import hashlib
 from openai import OpenAI
-import requests  # Para integração com o Mercado Pago
+import requests
+import json
 
 # Configuração do Flask
 template_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Templates")
@@ -28,10 +29,6 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 # Variável de disclaimer
 DISCLAIMER = "Este plano é gerado automaticamente. Consulte um profissional para ajustes personalizados.\n\n"
 
-# Função para conectar ao banco de dados
-def get_db():
-    return db
-
 # Função para validar a assinatura do webhook
 def validar_assinatura(body, signature):
     if not MERCADO_PAGO_WEBHOOK_SECRET:
@@ -43,14 +40,12 @@ def validar_assinatura(body, signature):
 
 # Função para verificar se o usuário pode gerar um plano
 def pode_gerar_plano(email, plano):
-    db = get_db()
     usuario = db.execute(
         text("SELECT * FROM usuarios WHERE email = :email"),
         {"email": email}
     ).mappings().fetchone()
 
     if plano == "anual":
-        # Verifica se o usuário tem uma assinatura ativa
         if usuario:
             assinatura = db.execute(
                 text("SELECT status FROM assinaturas WHERE usuario_id = :usuario_id ORDER BY id DESC LIMIT 1"),
@@ -58,23 +53,23 @@ def pode_gerar_plano(email, plano):
             ).mappings().fetchone()
 
             if assinatura and assinatura["status"] == "active":
-                return True  # Assinatura ativa, pode gerar plano
-        return False  # Assinatura não ativa ou não existe
+                return True
+        return False
 
     elif plano == "gratuito":
         if usuario:
-            # Plano gratuito: verifica se já gerou um plano este mês
-            ultima_geracao = datetime.strptime(usuario["ultima_geracao"], "%Y-%m-%d %H:%M:%S")
-            hoje = datetime.now()
-            if (hoje - ultima_geracao).days < 30:
-                return False  # Já gerou um plano este mês
-        return True  # Usuário não existe ou pode gerar plano gratuito
+            ultima_geracao = usuario["ultima_geracao"]
+            if ultima_geracao:
+                ultima_geracao = datetime.strptime(str(ultima_geracao), "%Y-%m-%d %H:%M:%S")
+                hoje = datetime.now()
+                if (hoje - ultima_geracao).days < 30:
+                    return False
+        return True
 
     return False
 
 # Função para registrar a geração de um plano
 def registrar_geracao(email, plano):
-    db = get_db()
     hoje = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     usuario = db.execute(
@@ -88,7 +83,7 @@ def registrar_geracao(email, plano):
                 INSERT INTO usuarios (email, plano, data_inscricao, ultima_geracao)
                 VALUES (:email, :plano, :data_inscricao, :ultima_geracao)
             """),
-            {"email": email, "plano": plano, "data_inscricao": hoje, "ultima_geracao": hoje},
+            {"email": email, "plano": plano, "data_inscricao": hoje, "ultima_geracao": hoye},
         )
         db.commit()
 
@@ -99,18 +94,18 @@ def registrar_geracao(email, plano):
         usuario_id = usuario["id"]
     else:
         db.execute(
-            text("UPDATE usuarios SET ultima_geracao = :ultima_geracao WHERE email = :email"),
-            {"ultima_geracao": hoje, "email": email},
+            text("UPDATE usuarios SET ultima_geracao = :ultima_geracao, plano = :plano WHERE email = :email"),
+            {"ultima_geracao": hoje, "email": email, "plano": plano},
         )
         usuario_id = usuario["id"]
 
     db.execute(
         text("INSERT INTO geracoes (usuario_id, data_geracao) VALUES (:usuario_id, :data_geracao)"),
-        {"usuario_id": usuario_id, "data_geracao": hoje},
+        {"usuario_id": usuario_id, "data_geracao": hoye},
     )
     db.commit()
 
-# Função para gerar o plano de treino usando a API da OpenAI
+# Função para gerar o plano de treino
 def gerar_plano_openai(prompt):
     try:
         response = client.chat.completions.create(
@@ -133,12 +128,25 @@ def iniciar_pagamento():
     if request.method == "POST":
         dados_usuario = request.form
     else:
-        dados_usuario = request.args  # Para capturar parâmetros da URL (GET)
+        dados_usuario = request.args
 
     if "email" not in dados_usuario:
         return "Email não fornecido.", 400
 
     email = dados_usuario["email"]
+
+    # Registrar tentativa de pagamento
+    try:
+        db.execute(
+            text("""
+                INSERT INTO tentativas_pagamento (email, data_tentativa)
+                VALUES (:email, NOW())
+            """),
+            {"email": email}
+        )
+        db.commit()
+    except Exception as e:
+        print(f"Erro ao registrar tentativa de pagamento: {e}")
 
     MERCADO_PAGO_URL = "https://api.mercadopago.com/checkout/preferences"
     headers = {
@@ -164,6 +172,7 @@ def iniciar_pagamento():
             "pending": "https://treinorun.com.br/pendente",
         },
         "auto_return": "approved",
+        "notification_url": "https://treinorun.com.br/webhook/mercadopago",
     }
 
     try:
@@ -175,38 +184,68 @@ def iniciar_pagamento():
         print(f"Erro ao criar preferência de pagamento: {e}")
         return "Erro ao processar o pagamento. Tente novamente mais tarde.", 500
 
-# Rota para assinar o plano anual diretamente
+# Rota para assinar o plano anual
 @app.route("/assinar_plano_anual", methods=["GET", "POST"])
 def assinar_plano_anual():
     if request.method == "POST":
         dados_usuario = request.form
     else:
-        dados_usuario = request.args  # Para capturar parâmetros da URL (GET)
+        dados_usuario = request.args
 
     if "email" not in dados_usuario:
         return "Email não fornecido.", 400
 
     email = dados_usuario["email"]
 
-    # Redireciona para o Mercado Pago
+    # Registrar o email no banco imediatamente
+    try:
+        db.execute(
+            text("""
+                INSERT INTO usuarios (email, data_inscricao)
+                VALUES (:email, NOW())
+                ON CONFLICT (email) DO NOTHING
+            """),
+            {"email": email}
+        )
+        db.commit()
+    except Exception as e:
+        print(f"Erro ao registrar email: {e}")
+
     return redirect(url_for("iniciar_pagamento", email=email))
 
-# Rota da página principal (Landing Page)
+# Rotas de páginas
 @app.route("/")
 def landing():
     return render_template("landing.html")
 
-# Rota de um segundo formulário (seutreino)
 @app.route("/seutreino")
 def seutreino():
     return render_template("seutreino.html")
 
-# Processa o formulário de CORRIDA
+@app.route("/sucesso")
+def sucesso():
+    return render_template("sucesso.html")
+
+@app.route("/erro")
+def erro():
+    return render_template("erro.html")
+
+@app.route("/pendente")
+def pendente():
+    return render_template("pendente.html")
+
+@app.route("/resultado")
+def resultado():
+    titulo = session.get("titulo", "Plano de Treino")
+    plano = session.get("plano", "Nenhum plano gerado.")
+    return render_template("resultado.html", titulo=titulo, plano=plano)
+
+# Processar formulário de CORRIDA
 @app.route("/generate", methods=["POST"])
 def generate():
     dados_usuario = request.form
-
     required_fields = ["email", "plano", "objetivo", "tempo_melhoria", "nivel", "dias", "tempo"]
+    
     if not all(field in dados_usuario for field in required_fields):
         return "Dados do formulário incompletos.", 400
 
@@ -224,28 +263,20 @@ Crie um plano detalhado de corrida para atingir o objetivo de {dados_usuario['ob
 - Nível: {dados_usuario['nivel']}
 - Dias disponíveis: {dados_usuario['dias']}
 - Tempo diário: {dados_usuario['tempo']} minutos.
-
-Para cada treino, forneça:
-- Tipo de exercício (ex.: caminhada leve, corrida moderada, intervalados, etc.);
-- Pace (ritmo de corrida) sugerido;
-- Tempo de duração do treino.
-
-Estruture o plano de forma semanal, listando os treinos por dia.
     """
     plano_gerado = gerar_plano_openai(prompt)
-
     registrar_geracao(email, plano)
 
     session["titulo"] = "Plano de Corrida"
     session["plano"] = DISCLAIMER + plano_gerado
     return redirect(url_for("resultado"))
 
-# Processa o formulário de PACE
+# Processar formulário de PACE
 @app.route("/generatePace", methods=["POST"])
 def generatePace():
     dados_usuario = request.form
-
     required_fields = ["email", "plano", "objetivo", "tempo_melhoria", "nivel", "dias", "tempo"]
+    
     if not all(field in dados_usuario for field in required_fields):
         return "Dados do formulário incompletos.", 400
 
@@ -263,95 +294,140 @@ Crie um plano detalhado para melhorar o pace de {dados_usuario['objetivo']} em {
 - Nível: {dados_usuario['nivel']}
 - Dias disponíveis: {dados_usuario['dias']}
 - Tempo diário: {dados_usuario['tempo']} minutos.
-
-Para cada treino, forneça:
-- Tipo de exercício (ex.: corrida leve, intervalados, tiros, etc.);
-- Pace (ritmo de corrida) sugerido;
-- Tempo de duração do treino.
-
-Estruture o plano de forma semanal, listando os treinos por dia.
     """
     plano_gerado = gerar_plano_openai(prompt)
-
     registrar_geracao(email, plano)
 
     session["titulo"] = "Plano de Pace"
     session["plano"] = DISCLAIMER + plano_gerado
     return redirect(url_for("resultado"))
 
-# Página de resultados
-@app.route("/resultado")
-def resultado():
-    titulo = session.get("titulo", "Plano de Treino")
-    plano = session.get("plano", "Nenhum plano gerado.")
-    return render_template("resultado.html", titulo=titulo, plano=plano)
-
-# Rota de sucesso
-@app.route("/sucesso")
-def sucesso():
-    return render_template("sucesso.html")
-
-# Rota de erro
-@app.route("/erro")
-def erro():
-    return render_template("erro.html")
-
-# Rota de pendente
-@app.route("/pendente")
-def pendente():
-    return render_template("pendente.html")
-
-# Rota do Webhook do Mercado Pago
+# Webhook do Mercado Pago
 @app.route("/webhook/mercadopago", methods=["POST"])
 def mercadopago_webhook():
     try:
+        # Registrar recebimento do webhook
+        payload = request.json
         signature = request.headers.get("X-Signature")
+        
+        db.execute(
+            text("""
+                INSERT INTO logs_webhook (payload, status_processamento)
+                VALUES (:payload, 'recebido')
+            """),
+            {"payload": json.dumps(payload)}
+        )
+        db.commit()
+
         if not signature:
-            return jsonify({"error": "Assinatura inválida"}), 403
+            raise ValueError("Assinatura não fornecida")
 
-        body = request.get_data()
-        if not validar_assinatura(body, signature):
-            return jsonify({"error": "Assinatura inválida"}), 403
+        if not validar_assinatura(request.get_data(), signature):
+            raise ValueError("Assinatura inválida")
 
-        data = request.json
-        print("Dados recebidos do Mercado Pago:", data)
+        # Atualizar status do log
+        db.execute(
+            text("""
+                UPDATE logs_webhook
+                SET status_processamento = 'processando'
+                WHERE id = (SELECT MAX(id) FROM logs_webhook)
+            """)
+        )
+        db.commit()
 
-        evento = data.get("action")
+        evento = payload.get("action")
+        
         if evento == "payment.updated":
-            payment_id = data.get("data", {}).get("id")
-            status = data.get("data", {}).get("status")
-            print(f"Pagamento {payment_id} atualizado para o status: {status}")
-
-            db = get_db()
-            db.execute(
-                text("INSERT INTO pagamentos (payment_id, status) VALUES (:payment_id, :status)"),
-                {"payment_id": payment_id, "status": status},
-            )
-            db.commit()
-
-        elif evento == "subscription.updated":
-            subscription_id = data.get("data", {}).get("id")
-            status = data.get("data", {}).get("status")
-            print(f"Assinatura {subscription_id} atualizada para o status: {status}")
-
-            email = data.get("data", {}).get("payer", {}).get("email")
-            if email:
-                db = get_db()
+            payment_id = payload.get("data", {}).get("id")
+            status = payload.get("data", {}).get("status")
+            
+            # Verificar se já existe antes de inserir
+            pagamento_existente = db.execute(
+                text("SELECT 1 FROM pagamentos WHERE payment_id = :payment_id"),
+                {"payment_id": payment_id}
+            ).fetchone()
+            
+            if not pagamento_existente:
                 db.execute(
                     text("""
-                        INSERT INTO assinaturas (subscription_id, usuario_id, status)
-                        VALUES (:subscription_id, (SELECT id FROM usuarios WHERE email = :email), :status)
+                        INSERT INTO pagamentos (payment_id, status, data_pagamento)
+                        VALUES (:payment_id, :status, NOW())
                     """),
-                    {"subscription_id": subscription_id, "email": email, "status": status},
+                    {"payment_id": payment_id, "status": status},
                 )
                 db.commit()
 
+        elif evento == "subscription.updated":
+            subscription_id = payload.get("data", {}).get("id")
+            status = payload.get("data", {}).get("status")
+            email = payload.get("data", {}).get("payer", {}).get("email")
+
+            if email:
+                # Verificar se o usuário existe
+                usuario = db.execute(
+                    text("SELECT id FROM usuarios WHERE email = :email"),
+                    {"email": email}
+                ).fetchone()
+
+                if not usuario:
+                    # Criar usuário se não existir
+                    db.execute(
+                        text("""
+                            INSERT INTO usuarios (email, data_inscricao)
+                            VALUES (:email, NOW())
+                            RETURNING id
+                        """),
+                        {"email": email}
+                    )
+                    usuario_id = db.fetchone()[0]
+                    db.commit()
+                else:
+                    usuario_id = usuario[0]
+
+                # Registrar/atualizar assinatura
+                db.execute(
+                    text("""
+                        INSERT INTO assinaturas (subscription_id, usuario_id, status, data_atualizacao)
+                        VALUES (:subscription_id, :usuario_id, :status, NOW())
+                        ON CONFLICT (subscription_id) DO UPDATE
+                        SET status = EXCLUDED.status,
+                            data_atualizacao = NOW()
+                    """),
+                    {
+                        "subscription_id": subscription_id,
+                        "usuario_id": usuario_id,
+                        "status": status
+                    },
+                )
+                db.commit()
+
+        # Registrar sucesso
+        db.execute(
+            text("""
+                UPDATE logs_webhook
+                SET status_processamento = 'sucesso'
+                WHERE id = (SELECT MAX(id) FROM logs_webhook)
+            """)
+        )
+        db.commit()
+
         return jsonify({"status": "success"}), 200
+
     except Exception as e:
         print("Erro ao processar webhook:", str(e))
+        db.execute(
+            text("""
+                UPDATE logs_webhook
+                SET status_processamento = 'erro',
+                    mensagem_erro = :mensagem
+                WHERE id = (SELECT MAX(id) FROM logs_webhook)
+            """),
+            {"mensagem": str(e)}
+        )
+        db.commit()
         return jsonify({"error": str(e)}), 500
 
-# Inicia o servidor Flask
+# Iniciar servidor
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(debug=True, host="0.0.0.0", port=port)
