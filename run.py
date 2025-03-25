@@ -67,7 +67,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ================================================
-# FUNÇÕES AUXILIARES (MANTIDAS COMO ANTES)
+# FUNÇÕES AUXILIARES ATUALIZADAS
 # ================================================
 
 def validar_assinatura(body, signature):
@@ -308,7 +308,7 @@ def resultado():
         """, 200
 
 # ================================================
-# ROTAS DE GERACAO DE PLANOS (MANTIDAS COMO ANTES)
+# ROTAS DE GERACAO DE PLANOS ATUALIZADAS
 # ================================================
 
 @app.route("/generate", methods=["POST"])
@@ -377,26 +377,62 @@ async def generatePace():
     semanas = calcular_semanas(dados_usuario['tempo_melhoria'])
     
     try:
-        partes = dados_usuario['objetivo'].split("para")
-        pace_inicial = float(partes[0].strip())
-        pace_final = float(partes[1].strip())
+        # Extrai os paces de forma flexível
+        objetivo = dados_usuario['objetivo'].lower()
         
-        if (pace_inicial - pace_final)/semanas > 0.5:
-            return "Progressão muito rápida. Ajuste seu objetivo.", 400
-    except:
-        return "Formato de objetivo inválido. Use 'reduzir pace de X para Y'.", 400
+        # Padrões de busca mais abrangentes
+        padrao1 = r'(\d+[\.,]?\d*)\s*(?:min(?:uto)?s?\/km|min\/km|min km|pace|ritmo)[^\d]*(\d+[\.,]?\d*)'
+        padrao2 = r'(?:reduzir|melhorar|diminuir|baixar).*?(\d+[\.,]?\d*).*?para.*?(\d+[\.,]?\d*)'
+        padrao3 = r'(\d+[\.,]?\d*)\s*\/\s*km.*?(\d+[\.,]?\d*)'
+        padrao4 = r'(\d+)[\.,:](\d+).*?(\d+)[\.,:](\d+)'  # Para formatos como 6:30 para 5:45
+        
+        # Tenta encontrar os valores em diferentes formatos
+        match = (re.search(padrao1, objetivo) or 
+                 re.search(padrao2, objetivo) or 
+                 re.search(padrao3, objetivo) or
+                 re.search(padrao4, objetivo))
+        
+        if not match:
+            return "Formato de objetivo inválido. Exemplos válidos:<br>" \
+                   "- Reduzir pace de 6:30 para 5:45<br>" \
+                   "- 6.5 min/km para 5.8 min/km<br>" \
+                   "- Melhorar ritmo de 7min/km para 6min30/km", 400
+        
+        # Converte os valores para float, tratando diferentes formatos
+        if len(match.groups()) == 4:  # Formato 6:30 para 5:45
+            pace_inicial = float(f"{match.group(1)}.{match.group(2)}")
+            pace_final = float(f"{match.group(3)}.{match.group(4)}")
+        else:
+            pace_inicial = float(match.group(1).replace(',', '.'))
+            pace_final = float(match.group(2).replace(',', '.'))
+        
+        # Validação da progressão
+        reducao_semanal = (pace_inicial - pace_final) / semanas
+        if reducao_semanal > 0.5:
+            return f"Progressão muito rápida ({reducao_semanal:.2f} min/km por semana). " \
+                   "Recomendamos no máximo 0.5 min/km por semana. " \
+                   "Ajuste seu objetivo ou aumente o tempo de treinamento.", 400
+        elif reducao_semanal < 0.05:
+            return "Progressão muito lenta. Verifique se os paces estão corretos.", 400
+            
+    except Exception as e:
+        logger.error(f"Erro ao processar objetivo: {e}")
+        return "Erro ao processar seu objetivo. Por favor, verifique o formato e tente novamente.", 400
 
     prompt = f"""
-    Crie um plano para melhorar o pace de {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']},
+    Crie um plano para melhorar o pace de {pace_inicial}min/km para {pace_final}min/km em {dados_usuario['tempo_melhoria']},
     {dados_usuario['dias']} dias/semana, sessões de {dados_usuario['tempo']} minutos.
 
     PACE INICIAL: {pace_inicial} min/km
     PACE FINAL: {pace_final} min/km (atingir na semana {semanas})
+    NÍVEL: {dados_usuario['nivel']}
 
     INSTRUÇÕES:
     1. Progressão semanal detalhada
     2. Treinos variados (intervalados, longos, recuperação)
     3. Atingir pace objetivo na semana final
+    4. Incluir aquecimento e desaquecimento em cada sessão
+    5. Considerar o nível do corredor ({dados_usuario['nivel']})
     """
     
     plano_gerado = await gerar_plano_openai(prompt, semanas)
