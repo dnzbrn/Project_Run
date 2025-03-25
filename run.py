@@ -2,7 +2,7 @@ from flask import Flask, request, render_template, redirect, url_for, session, j
 import os
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import scoped_session, sessionmaker
-from datetime import datetime
+from datetime import datetime, timedelta
 import hmac
 import hashlib
 from openai import OpenAI
@@ -133,6 +133,121 @@ def gerar_plano_openai(prompt):
         logger.error(f"Erro ao gerar plano com OpenAI: {e}")
         return "Erro ao gerar o plano. Tente novamente mais tarde."
 
+def enviar_email_confirmacao_pagamento(email, nome="Cliente"):
+    """Envia e-mail de confirmação de pagamento"""
+    try:
+        # HTML do e-mail de confirmação
+        email_html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <style>
+                body {{ 
+                    font-family: 'Arial', sans-serif; 
+                    line-height: 1.6; 
+                    color: #333; 
+                    max-width: 600px; 
+                    margin: 0 auto; 
+                    padding: 20px;
+                }}
+                .header {{ 
+                    background-color: #2563eb; 
+                    padding: 20px; 
+                    text-align: center; 
+                    border-radius: 8px 8px 0 0;
+                }}
+                .content {{ 
+                    padding: 20px; 
+                    background-color: #f9fafb;
+                    border-radius: 0 0 8px 8px;
+                }}
+                .footer {{ 
+                    text-align: center; 
+                    font-size: 12px; 
+                    color: #666; 
+                    margin-top: 20px;
+                }}
+                .btn {{ 
+                    display: inline-block; 
+                    background-color: #2563eb; 
+                    color: #ffffff !important; 
+                    padding: 12px 24px; 
+                    text-decoration: none; 
+                    border-radius: 5px; 
+                    margin: 15px 0;
+                    font-weight: bold;
+                    text-align: center;
+                    border: 1px solid #1d4ed8;
+                }}
+                .btn:hover {{
+                    background-color: #1d4ed8;
+                }}
+                h1 {{ 
+                    color: white; 
+                    margin: 0; 
+                    font-size: 24px;
+                }}
+                h2 {{ 
+                    color: #2563eb; 
+                    margin-top: 0;
+                }}
+                p {{
+                    margin-bottom: 15px;
+                }}
+                .highlight {{
+                    background-color: #e6f0ff;
+                    padding: 10px;
+                    border-radius: 5px;
+                    margin: 15px 0;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>TreinoRun</h1>
+            </div>
+            
+            <div class="content">
+                <h2>Confirmação de Pagamento</h2>
+                <p>Olá {nome},</p>
+                <p>Seu pagamento para o Plano Anual foi confirmado com sucesso!</p>
+                
+                <div class="highlight">
+                    <p><strong>Detalhes da Assinatura:</strong></p>
+                    <p>• Plano: Anual</p>
+                    <p>• Valor: R$ 59,90</p>
+                    <p>• Próximo vencimento: {(datetime.now() + timedelta(days=365)).strftime('%d/%m/%Y')}</p>
+                </div>
+
+                <p>Agora você pode gerar planos de treino ilimitados durante 1 ano.</p>
+                <a href="https://treinorun.com.br/seutreino" class="btn">Criar Meu Primeiro Treino</a>
+                <p>Atenciosamente,<br>Equipe TreinoRun</p>
+            </div>
+            
+            <div class="footer">
+                <p>TreinoRun © {datetime.now().year} | Todos os direitos reservados</p>
+                <p>Este é um e-mail automático, por favor não responda.</p>
+            </div>
+        </body>
+        </html>
+        """
+
+        # Configura a mensagem
+        msg = Message(
+            subject="Confirmação de Pagamento - Plano Anual",
+            recipients=[email],
+            html=email_html
+        )
+
+        # Envia o e-mail
+        mail.send(msg)
+        logger.info(f"E-mail de confirmação enviado para: {email}")
+        return True
+
+    except Exception as e:
+        logger.error(f"Erro ao enviar e-mail de confirmação: {str(e)}")
+        return False
+
 # ================================================
 # ROTAS PRINCIPAIS
 # ================================================
@@ -164,7 +279,7 @@ def resultado():
     return render_template("resultado.html", titulo=titulo, plano=plano)
 
 # ================================================
-# ROTAS DE GERACAO DE PLANOS (ATUALIZADAS)
+# ROTAS DE GERACAO DE PLANOS
 # ================================================
 
 @app.route("/generate", methods=["POST"])
@@ -375,7 +490,7 @@ def assinar_plano_anual():
     return redirect(url_for("iniciar_pagamento", email=email))
 
 # ================================================
-# WEBHOOK E EMAIL (COM MELHORIAS NO BOTÃO)
+# WEBHOOK E EMAIL
 # ================================================
 
 @app.route("/webhook/mercadopago", methods=["POST"])
@@ -409,6 +524,7 @@ def mercadopago_webhook():
             subscription_id = payload.get("data", {}).get("id")
             status = payload.get("data", {}).get("status")
             email = payload.get("data", {}).get("payer", {}).get("email")
+            nome = payload.get("data", {}).get("payer", {}).get("first_name", "Cliente")
 
             if email:
                 usuario = db.execute(text("SELECT id FROM usuarios WHERE email = :email"), {"email": email}).fetchone()
@@ -427,6 +543,10 @@ def mercadopago_webhook():
                     """),
                     {"subscription_id": subscription_id, "usuario_id": usuario_id, "status": status},
                 )
+                
+                # Disparar e-mail de confirmação quando o pagamento for aprovado
+                if status == "active":
+                    enviar_email_confirmacao_pagamento(email, nome)
 
         db.commit()
         return jsonify({"status": "success"}), 200
