@@ -46,12 +46,13 @@ MERCADO_PAGO_WEBHOOK_SECRET = os.getenv("MERCADO_PAGO_WEBHOOK_SECRET")
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+# Configuração do Flask-Mail com TLS
 app.config['MAIL_SERVER'] = 'smtp.zoho.com'
 app.config['MAIL_PORT'] = 587
 app.config['MAIL_USE_TLS'] = True
 app.config['MAIL_USERNAME'] = os.getenv('ZOHO_EMAIL')
 app.config['MAIL_PASSWORD'] = os.getenv('ZOHO_PASSWORD')
-app.config['MAIL_DEFAULT_SENDER'] = os.getenv('ZOHO_EMAIL')
+app.config['MAIL_DEFAULT_SENDER'] = ('TreinoRun', os.getenv('ZOHO_EMAIL'))
 mail = Mail(app)
 
 DISCLAIMER = "Este plano é gerado automaticamente. Consulte um profissional para ajustes personalizados.\n\n"
@@ -161,26 +162,57 @@ async def gerar_plano_openai(prompt, semanas):
         return "Erro ao gerar o plano. Tente novamente mais tarde."
 
 def enviar_email_confirmacao_pagamento(email, nome="Cliente"):
+    """Envia e-mail de confirmação de pagamento com template profissional"""
     try:
         msg = Message(
-            subject="Confirmação de Pagamento - Plano Anual",
+            subject="✅ Pagamento Confirmado - TreinoRun",
             recipients=[email],
             html=f"""
             <!DOCTYPE html>
             <html>
+            <head>
+                <style>
+                    body {{ font-family: 'Arial', sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }}
+                    .header {{ background-color: #27ae60; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }}
+                    .content {{ padding: 20px; background-color: #f9f9f9; }}
+                    .footer {{ text-align: center; padding: 10px; font-size: 12px; color: #777; }}
+                    .btn {{ display: inline-block; padding: 10px 20px; background-color: #2ecc71; color: white; 
+                            text-decoration: none; border-radius: 5px; margin: 15px 0; }}
+                    .features {{ margin: 20px 0; }}
+                    .feature-item {{ margin-bottom: 10px; padding-left: 20px; position: relative; }}
+                    .feature-item:before {{ content: "✓"; position: absolute; left: 0; color: #27ae60; }}
+                </style>
+            </head>
             <body>
-                <h2>Olá {nome},</h2>
-                <p>Seu pagamento foi confirmado com sucesso!</p>
-                <p>Agora você pode gerar planos ilimitados por 1 ano.</p>
-                <p>Acesse: <a href="https://treinorun.com.br/seutreino">Gerar Planos</a></p>
+                <div class="header">
+                    <h2 style="margin:0;">Pagamento Confirmado!</h2>
+                </div>
+                <div class="content">
+                    <p>Olá {nome},</p>
+                    <p>Seu pagamento foi processado com sucesso e agora você tem acesso completo ao TreinoRun por 1 ano!</p>
+                    
+                    <div class="features">
+                        <div class="feature-item">Planos ilimitados de treino</div>
+                        <div class="feature-item">Acesso a todas as funcionalidades</div>
+                        <div class="feature-item">Suporte prioritário</div>
+                    </div>
+
+                    <a href="https://treinorun.com.br/seutreino" class="btn">Começar a Usar</a>
+                    
+                    <p>Atenciosamente,<br>Equipe TreinoRun</p>
+                </div>
+                <div class="footer">
+                    <p>© {datetime.now().year} TreinoRun • <a href="https://treinorun.com.br" style="color: #27ae60;">www.treinorun.com.br</a></p>
+                    <p>Dúvidas? Contate-nos em suporte@treinorun.com.br</p>
+                </div>
             </body>
             </html>
             """
         )
         mail.send(msg)
-        logger.info(f"E-mail enviado para {email}")
+        logger.info(f"E-mail de confirmação enviado para {email}")
     except Exception as e:
-        logger.error(f"Erro ao enviar e-mail: {e}")
+        logger.error(f"Erro ao enviar e-mail de confirmação: {e}")
 
 # ================================================
 # ROTAS PRINCIPAIS
@@ -445,7 +477,7 @@ async def generatePace():
     return redirect(url_for("resultado"))
 
 # ================================================
-# ROTAS DE PAGAMENTO E WEBHOOK (COMPLETO)
+# ROTAS DE PAGAMENTO E WEBHOOK
 # ================================================
 
 @app.route("/iniciar_pagamento", methods=["GET", "POST"])
@@ -601,15 +633,42 @@ def send_plan_email():
             return jsonify({"success": False, "message": "E-mail e PDF são obrigatórios"}), 400
 
         msg = Message(
-            subject=f"Seu {tipo_treino} - TreinoRun",
+            subject=f"📝 Seu Plano de Treino - TreinoRun",
             recipients=[recipient],
             html=f"""
             <!DOCTYPE html>
             <html>
+            <head>
+                <style>
+                    body {{ font-family: 'Arial', sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }}
+                    .header {{ background-color: #2c3e50; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }}
+                    .content {{ padding: 20px; background-color: #f9f9f9; }}
+                    .footer {{ text-align: center; padding: 10px; font-size: 12px; color: #777; }}
+                    .btn {{ display: inline-block; padding: 10px 20px; background-color: #3498db; color: white; 
+                            text-decoration: none; border-radius: 5px; margin: 15px 0; }}
+                    .tip {{ background-color: #e8f4fc; padding: 10px; border-left: 4px solid #3498db; margin: 15px 0; }}
+                </style>
+            </head>
             <body>
-                <h2>Seu {tipo_treino} Personalizado</h2>
-                <p>Segue em anexo o seu plano de treino gerado.</p>
-                <p>Atenciosamente,<br>Equipe TreinoRun</p>
+                <div class="header">
+                    <h2 style="margin:0;">Seu Plano de Treino Personalizado</h2>
+                </div>
+                <div class="content">
+                    <p>Olá,</p>
+                    <p>Segue em anexo o seu plano <strong>{tipo_treino}</strong> gerado especialmente para você.</p>
+                    
+                    <div class="tip">
+                        <p><strong>Dica:</strong> Imprima ou salve no seu dispositivo para fácil acesso durante os treinos!</p>
+                    </div>
+
+                    <a href="https://treinorun.com.br/seutreino" class="btn">Acessar Plataforma</a>
+                    
+                    <p>Atenciosamente,<br>Equipe TreinoRun</p>
+                </div>
+                <div class="footer">
+                    <p>© {datetime.now().year} TreinoRun • <a href="https://treinorun.com.br" style="color: #3498db;">www.treinorun.com.br</a></p>
+                    <p>Este é um e-mail automático, por favor não responda.</p>
+                </div>
             </body>
             </html>
             """
