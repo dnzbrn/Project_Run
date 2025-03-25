@@ -91,7 +91,12 @@ def calcular_semanas(tempo_melhoria):
     """Calcula o número de semanas com base no tempo de melhoria informado"""
     try:
         tempo_melhoria = tempo_melhoria.lower()
-        match = re.search(r'(\d+)\s*(semanas?|meses?|mês)', tempo_melhoria)
+        
+        # Padroniza a entrada para facilitar o parsing
+        tempo_melhoria = tempo_melhoria.replace("meses", "mês").replace("mese", "mês")
+        
+        # Extrai valor e unidade
+        match = re.search(r'(\d+)\s*(semanas?|meses?|mês|m)', tempo_melhoria)
         
         if not match:
             return 4  # Default
@@ -100,9 +105,9 @@ def calcular_semanas(tempo_melhoria):
         unidade = match.group(2)
         
         if 'semana' in unidade:
-            return min(valor, 52)  # Máximo de 1 ano
-        elif 'mes' in unidade or 'mês' in unidade:
-            return min(valor * 4, 52)  # 4 semanas por mês, máximo 1 ano
+            return min(max(valor, 2), 52)  # Mínimo 2 semanas, máximo 1 ano
+        elif 'mes' in unidade or 'mês' in unidade or 'm' in unidade:
+            return min(max(valor * 4, 4), 52)  # 4 semanas por mês, mínimo 4 semanas
         else:
             return 4  # Default
     except Exception as e:
@@ -146,25 +151,51 @@ def gerar_plano_openai(prompt, semanas):
         model = "gpt-3.5-turbo-16k" if semanas > 12 else "gpt-3.5-turbo"
         max_tokens = 4000 if semanas > 12 else 2000
         
+        # Adiciona instruções mais claras ao prompt
+        prompt_enhanced = prompt + f"""
+        
+        REGRAS ABSOLUTAS PARA {semanas} SEMANAS:
+        1. Para {semanas} semanas ou menos, DETALHE CADA SEMANA INDIVIDUALMENTE
+        2. Sempre inclua:
+           - Objetivo específico da semana
+           - Todos os dias de treino com:
+             * Tipo (leve/moderado/intenso)
+             * PACE ALVO EXATO (em min/km) ou TEMPO TOTAL (para planos de corrida)
+             * Estrutura temporal detalhada
+             * Descrição completa
+             * Sensação esperada
+           - Dias de descanso
+        3. Progressão realista semana a semana
+        4. Nunca resuma semanas individuais quando o total for ≤12 semanas
+        """
+        
         response = client.chat.completions.create(
             model=model,
             messages=[
                 {"role": "system", "content": "Você é um treinador de corrida experiente. Siga exatamente as instruções fornecidas."},
-                {"role": "user", "content": prompt},
+                {"role": "user", "content": prompt_enhanced},
             ],
             max_tokens=max_tokens,
             temperature=0.7,
         )
         plano = response.choices[0].message.content.strip()
         
-        # Verifica se o plano parece completo
-        if semanas > 12 and "EXEMPLO DETALHADO" not in plano:
-            plano += "\n\nEXEMPLO DETALHADO DAS SEMANAS RESUMIDAS:\n"
-            plano += "- Segunda: 5min aquecimento + 30min corrida (10min a 6:30/km + 20min a 6:15/km) + 5min desaquecimento\n"
-            plano += "- Quarta: 8x400m a 5:00/km com 200m trote entre intervalos\n"
-            plano += "- Sexta: 5km leve a 7:00/km (recuperação)\n"
-            plano += "- Domingo: 12km progressivo (6km a 6:15/km + 6km a 6:00/km)"
-            
+        # Verificação adicional para garantir que todas as semanas foram geradas
+        if semanas <= 12:
+            semana_count = plano.lower().count("semana")
+            if semana_count < semanas:
+                # Se faltam semanas, solicita complemento
+                complemento = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": "Você está completando um plano de treino."},
+                        {"role": "user", "content": f"Complete o plano com as semanas faltantes ({semana_count+1} a {semanas}):\n{plano}"},
+                    ],
+                    max_tokens=2000,
+                    temperature=0.7,
+                )
+                plano += "\n\n" + complemento.choices[0].message.content.strip()
+                
         return plano
     except Exception as e:
         logger.error(f"Erro ao gerar plano com OpenAI: {e}")
@@ -173,114 +204,53 @@ def gerar_plano_openai(prompt, semanas):
 def enviar_email_confirmacao_pagamento(email, nome="Cliente"):
     """Envia e-mail de confirmação de pagamento"""
     try:
-        # HTML do e-mail de confirmação
         email_html = f"""
         <!DOCTYPE html>
         <html>
         <head>
             <style>
-                body {{ 
-                    font-family: 'Arial', sans-serif; 
-                    line-height: 1.6; 
-                    color: #333; 
-                    max-width: 600px; 
-                    margin: 0 auto; 
-                    padding: 20px;
-                }}
-                .header {{ 
-                    background-color: #2563eb; 
-                    padding: 20px; 
-                    text-align: center; 
-                    border-radius: 8px 8px 0 0;
-                }}
-                .content {{ 
-                    padding: 20px; 
-                    background-color: #f9fafb;
-                    border-radius: 0 0 8px 8px;
-                }}
-                .footer {{ 
-                    text-align: center; 
-                    font-size: 12px; 
-                    color: #666; 
-                    margin-top: 20px;
-                }}
-                .btn {{ 
-                    display: inline-block; 
-                    background-color: #2563eb; 
-                    color: #ffffff !important; 
-                    padding: 12px 24px; 
-                    text-decoration: none; 
-                    border-radius: 5px; 
-                    margin: 15px 0;
-                    font-weight: bold;
-                    text-align: center;
-                    border: 1px solid #1d4ed8;
-                }}
-                .btn:hover {{
-                    background-color: #1d4ed8;
-                }}
-                h1 {{ 
-                    color: white; 
-                    margin: 0; 
-                    font-size: 24px;
-                }}
-                h2 {{ 
-                    color: #2563eb; 
-                    margin-top: 0;
-                }}
-                p {{
-                    margin-bottom: 15px;
-                }}
-                .highlight {{
-                    background-color: #e6f0ff;
-                    padding: 10px;
-                    border-radius: 5px;
-                    margin: 15px 0;
-                }}
+                body {{ font-family: 'Arial', sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }}
+                .header {{ background-color: #2563eb; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }}
+                .content {{ padding: 20px; background-color: #f9fafb; border-radius: 0 0 8px 8px; }}
+                .footer {{ text-align: center; font-size: 12px; color: #666; margin-top: 20px; }}
+                .btn {{ display: inline-block; background-color: #2563eb; color: #ffffff !important; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin: 15px 0; font-weight: bold; }}
+                h1 {{ color: white; margin: 0; font-size: 24px; }}
+                h2 {{ color: #2563eb; margin-top: 0; }}
             </style>
         </head>
         <body>
             <div class="header">
                 <h1>TreinoRun</h1>
             </div>
-            
             <div class="content">
                 <h2>Confirmação de Pagamento</h2>
                 <p>Olá {nome},</p>
                 <p>Seu pagamento para o Plano Anual foi confirmado com sucesso!</p>
-                
-                <div class="highlight">
+                <div style="background-color: #e6f0ff; padding: 10px; border-radius: 5px; margin: 15px 0;">
                     <p><strong>Detalhes da Assinatura:</strong></p>
                     <p>• Plano: Anual</p>
                     <p>• Valor: R$ 59,90</p>
                     <p>• Próximo vencimento: {(datetime.now() + timedelta(days=365)).strftime('%d/%m/%Y')}</p>
                 </div>
-
                 <p>Agora você pode gerar planos de treino ilimitados durante 1 ano.</p>
                 <a href="https://treinorun.com.br/seutreino" class="btn">Criar Meu Primeiro Treino</a>
                 <p>Atenciosamente,<br>Equipe TreinoRun</p>
             </div>
-            
             <div class="footer">
                 <p>TreinoRun © {datetime.now().year} | Todos os direitos reservados</p>
-                <p>Este é um e-mail automático, por favor não responda.</p>
             </div>
         </body>
         </html>
         """
 
-        # Configura a mensagem
         msg = Message(
             subject="Confirmação de Pagamento - Plano Anual",
             recipients=[email],
             html=email_html
         )
-
-        # Envia o e-mail
         mail.send(msg)
         logger.info(f"E-mail de confirmação enviado para: {email}")
         return True
-
     except Exception as e:
         logger.error(f"Erro ao enviar e-mail de confirmação: {str(e)}")
         return False
@@ -316,7 +286,7 @@ def resultado():
     return render_template("resultado.html", titulo=titulo, plano=plano)
 
 # ================================================
-# ROTAS DE GERACAO DE PLANOS
+# ROTAS DE GERACAO DE PLANOS (MELHORADAS)
 # ================================================
 
 @app.route("/generate", methods=["POST"])
@@ -337,52 +307,50 @@ def generate():
 
     semanas = calcular_semanas(dados_usuario['tempo_melhoria'])
     
-    # Define a estratégia com base na duração
-    if semanas <= 12:
-        estrategia = f"O plano deve detalhar TODAS AS {semanas} SEMANAS completas com divisão temporal exata."
-    else:
-        estrategia = f"""
-        O plano deve:
-        1. Detalhar COMPLETAMENTE as primeiras 12 semanas
-        2. Resumir as semanas 13-{semanas} com:
-           - Progressão geral
-           - Exemplo detalhado de semana típica
-           - Recomendações para continuidade
-        """
+    # Validação adicional para objetivos muito agressivos
+    try:
+        if "maratona" in dados_usuario['objetivo'].lower() and semanas < 16:
+            return "Preparação para maratona requer mínimo de 16 semanas. Ajuste seu tempo de melhoria.", 400
+        elif "meia-maratona" in dados_usuario['objetivo'].lower() and semanas < 12:
+            return "Preparação para meia-maratona requer mínimo de 12 semanas. Ajuste seu tempo de melhoria.", 400
+    except:
+        pass
 
     prompt = f"""
     Crie um plano de corrida para {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']},
     {dados_usuario['dias']} dias/semana, sessões de {dados_usuario['tempo']} minutos.
 
     NÍVEL: {dados_usuario['nivel']}
-    ESTRATÉGIA: {estrategia}
+    DIAS DISPONÍVEIS: {dados_usuario['dias']}
+    TEMPO POR SESSÃO: {dados_usuario['tempo']} minutos
+    TOTAL DE SEMANAS: {semanas}
 
-    FORMATO OBRIGATÓRIO PARA CADA SEMANA DETALHADA:
-    SEMANA [X]:
-    - Objetivo específico
-    - Dias de treino:
-      * Tipo (leve/moderado/intenso)
-      * TEMPO TOTAL: [min]
-      * DIVISÃO TEMPORAL: (ex: 5min aquecimento + 20min principal + 5min desaquecimento)
-      * Descrição completa
-      * Sensação esperada (ex: "confortável", "desafiador")
-    - Dias de descanso
-
-    {"FORMATO PARA RESUMO (se aplicável):" if semanas > 12 else ""}
-    RESUMO SEMANAS 13-{semanas}:
-    - Progressão geral
-    - EXEMPLO DE SEMANA TÍPICA (com divisão temporal)
-    - Recomendações finais
+    INSTRUÇÕES ESPECÍFICAS:
+    1. DETALHE TODAS AS {semanas} SEMANAS INDIVIDUALMENTE
+    2. Cada semana deve conter:
+       - Objetivo específico da semana
+       - Todos os dias de treino com:
+         * Tipo (leve/moderado/intenso)
+         * TEMPO TOTAL: [min]
+         * DIVISÃO TEMPORAL: (ex: 5min aquecimento + 20min principal + 5min desaquecimento)
+         * Descrição completa da sessão
+         * Sensação esperada (ex: "confortável", "desafiador")
+       - Dias de descanso
+    3. Progressão gradual e segura semana a semana
+    4. Incluir variação de treinos (longos, intervalados, recuperação, ritmo)
 
     EXEMPLOS CONCRETOS REQUERIDOS:
     - Moderado: 10min caminhada + 15min corrida (5min a 6:30/km + 10min a 6:15/km) + 5min caminhada
     - Intenso: 5min aquecimento + 8x(2min a 5:45/km + 1min trote) + 5min desaquecimento
     - Leve: 30min contínuo a 7:00/km
+    - Longo: 60min progressivo (20min a 6:30/km + 20min a 6:15/km + 20min a 6:00/km)
 
     REGRAS ABSOLUTAS:
     1. NUNCA use "similar às semanas anteriores"
-    2. SEMPRE especifique tempos EXATOS
-    3. Mantenha progressão lógica semana a semana
+    2. SEMPRE especifique tempos EXATOS para cada sessão
+    3. Garanta progressão lógica e segura
+    4. Inclua todos os {dados_usuario['dias']} dias de treino por semana
+    5. Nunca resuma semanas individuais quando o total for ≤12
     """
     
     plano_gerado = gerar_plano_openai(prompt, semanas)
@@ -410,38 +378,40 @@ def generatePace():
 
     semanas = calcular_semanas(dados_usuario['tempo_melhoria'])
     
-    if semanas <= 12:
-        estrategia = f"Detalhar TODAS AS {semanas} SEMANAS com paces exatos e divisão temporal."
-    else:
-        estrategia = f"""
-        Detalhar COMPLETAMENTE as primeiras 12 semanas e resumir as semanas 13-{semanas} com:
-        - Progressão de pace
-        - Exemplo de semana típica com paces específicos
-        - Recomendações finais
-        """
+    # Validação adicional para progressão de pace realista
+    try:
+        pace_inicial = float(dados_usuario['objetivo'].split("para")[0].strip())
+        pace_final = float(dados_usuario['objetivo'].split("para")[1].strip())
+        
+        # Limita a melhoria máxima de 0.5 min/km por semana
+        melhoria_semanal = min((pace_inicial - pace_final)/semanas, 0.5)
+        if melhoria_semanal > 0.5:
+            return "A melhoria solicitada é muito agressiva. Por favor, ajuste seu objetivo para uma progressão mais segura.", 400
+    except:
+        pass
 
     prompt = f"""
     Crie um plano para melhorar o pace de {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']},
     {dados_usuario['dias']} dias/semana, sessões de {dados_usuario['tempo']} minutos.
 
     NÍVEL: {dados_usuario['nivel']}
-    ESTRATÉGIA: {estrategia}
+    DIAS DISPONÍVEIS: {dados_usuario['dias']}
+    TEMPO POR SESSÃO: {dados_usuario['tempo']} minutos
+    TOTAL DE SEMANAS: {semanas}
 
-    FORMATO OBRIGATÓRIO PARA CADA SEMANA DETALHADA:
-    SEMANA [X]:
-    - Objetivo de pace
-    - Dias de treino:
-      * Tipo (leve/moderado/intenso)
-      * PACE ALVO: [min/km]
-      * ESTRUTURA: (ex: 5min a 6:30/km + 20min a 6:00/km)
-      * Descrição completa
-    - Dias de descanso
-
-    {"FORMATO PARA RESUMO (se aplicável):" if semanas > 12 else ""}
-    RESUMO SEMANAS 13-{semanas}:
-    - Progressão geral de pace
-    - EXEMPLO DE SEMANA TÍPICA (com paces específicos)
-    - Recomendações finais
+    INSTRUÇÕES ESPECÍFICAS:
+    1. DETALHE TODAS AS {semanas} SEMANAS INDIVIDUALMENTE
+    2. Cada semana deve conter:
+       - Objetivo de pace específico
+       - Todos os dias de treino com:
+         * Tipo (leve/moderado/intenso)
+         * PACE ALVO: [valor exato em min/km]
+         * ESTRUTURA TEMPORAL: (ex: 5min a 6:30/km + 20min a 6:00/km)
+         * Descrição completa da sessão
+         * Sensação esperada (ex: "confortável", "desafiador")
+       - Dias de descanso
+    3. Progressão realista semana a semana (máximo 0.5 min/km de melhoria por semana)
+    4. Incluir variação de treinos (longos, intervalados, recuperação)
 
     EXEMPLOS CONCRETOS REQUERIDOS:
     - Intervalado: 5min a 6:30/km + 6x(400m a 5:00/km com 200m trote) + 5min a 6:30/km
@@ -449,9 +419,10 @@ def generatePace():
     - Recuperação: 5km a 7:00/km
 
     REGRAS ABSOLUTAS:
-    1. NUNCA use "paces similares"
-    2. SEMPRE especifique paces EXATOS
-    3. Progressão realista semana a semana
+    1. NUNCA resuma semanas quando o total for ≤12
+    2. SEMPRE especifique paces EXATOS para cada sessão
+    3. Garanta progressão lógica e segura
+    4. Inclua todos os {dados_usuario['dias']} dias de treino por semana
     """
     
     plano_gerado = gerar_plano_openai(prompt, semanas)
@@ -590,7 +561,6 @@ def mercadopago_webhook():
                     {"subscription_id": subscription_id, "usuario_id": usuario_id, "status": status},
                 )
                 
-                # Disparar e-mail de confirmação quando o pagamento for aprovado
                 if status == "active":
                     enviar_email_confirmacao_pagamento(email, nome)
 
@@ -609,7 +579,6 @@ def mercadopago_webhook():
 @app.route('/send_plan_email', methods=['POST'])
 def send_plan_email():
     try:
-        # Verifica se a requisição é JSON
         if not request.is_json:
             return jsonify({
                 "success": False,
@@ -620,16 +589,9 @@ def send_plan_email():
         recipient = data.get('email')
         pdf_data = data.get('pdfData')
         
-        # Obtém o tipo de treino da sessão
         tipo_treino = session.get("titulo", "Plano de Treino")
-        
-        # Remove "Plano de " do título para deixar apenas "Corrida" ou "Pace"
         tipo_treino_simplificado = tipo_treino.replace("Plano de ", "")
-        
-        # Data atual no formato AAAAMMDD
         data_atual = datetime.now().strftime("%Y%m%d")
-        
-        # Nome do arquivo PDF conforme solicitado
         nome_arquivo = f"TREINO_{tipo_treino_simplificado.upper().replace(' ', '_')}_{data_atual}.pdf"
 
         if not recipient or not pdf_data:
@@ -638,71 +600,24 @@ def send_plan_email():
                 "message": "E-mail e PDF são obrigatórios"
             }), 400
 
-        # HTML do e-mail profissional
         email_html = f"""
         <!DOCTYPE html>
         <html>
         <head>
             <style>
-                body {{ 
-                    font-family: 'Arial', sans-serif; 
-                    line-height: 1.6; 
-                    color: #333; 
-                    max-width: 600px; 
-                    margin: 0 auto; 
-                    padding: 20px;
-                }}
-                .header {{ 
-                    background-color: #2563eb; 
-                    padding: 20px; 
-                    text-align: center; 
-                    border-radius: 8px 8px 0 0;
-                }}
-                .content {{ 
-                    padding: 20px; 
-                    background-color: #f9fafb;
-                    border-radius: 0 0 8px 8px;
-                }}
-                .footer {{ 
-                    text-align: center; 
-                    font-size: 12px; 
-                    color: #666; 
-                    margin-top: 20px;
-                }}
-                .btn {{ 
-                    display: inline-block; 
-                    background-color: #2563eb; 
-                    color: #ffffff !important; 
-                    padding: 12px 24px; 
-                    text-decoration: none; 
-                    border-radius: 5px; 
-                    margin: 15px 0;
-                    font-weight: bold;
-                    text-align: center;
-                    border: 1px solid #1d4ed8;
-                }}
-                .btn:hover {{
-                    background-color: #1d4ed8;
-                }}
-                h1 {{ 
-                    color: white; 
-                    margin: 0; 
-                    font-size: 24px;
-                }}
-                h2 {{ 
-                    color: #2563eb; 
-                    margin-top: 0;
-                }}
-                p {{
-                    margin-bottom: 15px;
-                }}
+                body {{ font-family: 'Arial', sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }}
+                .header {{ background-color: #2563eb; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }}
+                .content {{ padding: 20px; background-color: #f9fafb; border-radius: 0 0 8px 8px; }}
+                .footer {{ text-align: center; font-size: 12px; color: #666; margin-top: 20px; }}
+                .btn {{ display: inline-block; background-color: #2563eb; color: #ffffff !important; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin: 15px 0; font-weight: bold; }}
+                h1 {{ color: white; margin: 0; font-size: 24px; }}
+                h2 {{ color: #2563eb; margin-top: 0; }}
             </style>
         </head>
         <body>
             <div class="header">
                 <h1>TreinoRun</h1>
             </div>
-            
             <div class="content">
                 <h2>Seu {tipo_treino} Personalizado</h2>
                 <p>Segue em anexo o seu {tipo_treino.lower()} personalizado.</p>
@@ -710,23 +625,19 @@ def send_plan_email():
                 <a href="https://treinorun.com.br" class="btn">Acessar TreinoRun</a>
                 <p>Atenciosamente,<br>Equipe TreinoRun</p>
             </div>
-            
             <div class="footer">
                 <p>TreinoRun © {datetime.now().year} | Todos os direitos reservados</p>
-                <p>Este é um e-mail automático, por favor não responda.</p>
             </div>
         </body>
         </html>
         """
 
-        # Configura a mensagem
         msg = Message(
             subject=f"Seu {tipo_treino} - TreinoRun",
             recipients=[recipient],
             html=email_html
         )
 
-        # Anexa o PDF
         pdf_content = base64.b64decode(pdf_data.split(',')[1])
         msg.attach(
             nome_arquivo,
@@ -734,7 +645,6 @@ def send_plan_email():
             BytesIO(pdf_content).read()
         )
 
-        # Envia o e-mail
         mail.send(msg)
         logger.info(f"E-mail enviado para: {recipient}")
         
