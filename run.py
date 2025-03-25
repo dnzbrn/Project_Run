@@ -17,10 +17,14 @@ import logging
 import re
 
 # ================================================
-# CONFIGURAÇÕES INICIAIS
+# CONFIGURAÇÃO INICIAL COM CAMINHO DOS TEMPLATES
 # ================================================
 
-app = Flask(__name__)
+# Configura caminho absoluto para os templates
+basedir = os.path.abspath(os.path.dirname(__file__))
+template_dir = os.path.join(basedir, 'templates')
+
+app = Flask(__name__, template_folder=template_dir)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "uma_chave_segura_aqui")
 
 # Decorator para rotas assíncronas
@@ -30,12 +34,16 @@ def async_route(f):
         return asyncio.run(f(*args, **kwargs))
     return wrapper
 
-# Configuração do Banco de Dados
+# ================================================
+# CONFIGURAÇÕES DO BANCO DE DADOS E APIs
+# ================================================
+
+# Configuração do Banco de Dados PostgreSQL
 DATABASE_URL = os.getenv("DATABASE_URL")
 engine = create_engine(DATABASE_URL)
 db = scoped_session(sessionmaker(bind=engine))
 
-# Configurações de API
+# Configuração do Mercado Pago
 MERCADO_PAGO_ACCESS_TOKEN = os.getenv("MERCADO_PAGO_ACCESS_TOKEN")
 MERCADO_PAGO_WEBHOOK_SECRET = os.getenv("MERCADO_PAGO_WEBHOOK_SECRET")
 
@@ -59,7 +67,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ================================================
-# FUNÇÕES AUXILIARES (COMPLETAS)
+# FUNÇÕES AUXILIARES (MANTIDAS COMO ANTES)
 # ================================================
 
 def validar_assinatura(body, signature):
@@ -197,37 +205,110 @@ def enviar_email_confirmacao_pagamento(email, nome="Cliente"):
         logger.error(f"Erro ao enviar e-mail: {e}")
 
 # ================================================
-# ROTAS PRINCIPAIS (COMPLETAS)
+# ROTAS PRINCIPAIS (COM VERIFICAÇÃO DE TEMPLATES)
 # ================================================
 
 @app.route("/")
 def landing():
-    return render_template("landing.html")
+    try:
+        return render_template("landing.html")
+    except Exception as e:
+        logger.error(f"Erro ao renderizar landing.html: {e}")
+        return """
+        <!DOCTYPE html>
+        <html>
+        <body>
+            <h1>TreinoRun - Página Inicial</h1>
+            <p>Aplicação está funcionando, mas o template não foi carregado.</p>
+            <a href="/seutreino">Criar Treino</a>
+        </body>
+        </html>
+        """, 200
 
 @app.route("/seutreino")
 def seutreino():
-    return render_template("seutreino.html")
+    try:
+        return render_template("seutreino.html")
+    except Exception as e:
+        logger.error(f"Erro ao renderizar seutreino.html: {e}")
+        return """
+        <!DOCTYPE html>
+        <html>
+        <body>
+            <h1>Criar Seu Treino</h1>
+            <p>Formulário de criação de treino</p>
+        </body>
+        </html>
+        """, 200
 
 @app.route("/sucesso")
 def sucesso():
-    return render_template("sucesso.html")
+    try:
+        return render_template("sucesso.html")
+    except Exception as e:
+        logger.error(f"Erro ao renderizar sucesso.html: {e}")
+        return """
+        <!DOCTYPE html>
+        <html>
+        <body>
+            <h1>Sucesso!</h1>
+            <p>Operação concluída com sucesso.</p>
+        </body>
+        </html>
+        """, 200
 
 @app.route("/erro")
 def erro():
-    return render_template("erro.html")
+    try:
+        return render_template("erro.html")
+    except Exception as e:
+        logger.error(f"Erro ao renderizar erro.html: {e}")
+        return """
+        <!DOCTYPE html>
+        <html>
+        <body>
+            <h1>Erro</h1>
+            <p>Ocorreu um erro inesperado.</p>
+        </body>
+        </html>
+        """, 200
 
 @app.route("/pendente")
 def pendente():
-    return render_template("pendente.html")
+    try:
+        return render_template("pendente.html")
+    except Exception as e:
+        logger.error(f"Erro ao renderizar pendente.html: {e}")
+        return """
+        <!DOCTYPE html>
+        <html>
+        <body>
+            <h1>Pagamento Pendente</h1>
+            <p>Seu pagamento está sendo processado.</p>
+        </body>
+        </html>
+        """, 200
 
 @app.route("/resultado")
 def resultado():
-    titulo = session.get("titulo", "Plano de Treino")
-    plano = session.get("plano", "Nenhum plano gerado.")
-    return render_template("resultado.html", titulo=titulo, plano=plano)
+    try:
+        titulo = session.get("titulo", "Plano de Treino")
+        plano = session.get("plano", "Nenhum plano gerado.")
+        return render_template("resultado.html", titulo=titulo, plano=plano)
+    except Exception as e:
+        logger.error(f"Erro ao renderizar resultado.html: {e}")
+        return f"""
+        <!DOCTYPE html>
+        <html>
+        <body>
+            <h1>{session.get('titulo', 'Plano de Treino')}</h1>
+            <pre>{session.get('plano', 'Nenhum plano gerado.')}</pre>
+        </body>
+        </html>
+        """, 200
 
 # ================================================
-# ROTAS DE GERACAO DE PLANOS (COMPLETAS)
+# ROTAS DE GERACAO DE PLANOS (MANTIDAS COMO ANTES)
 # ================================================
 
 @app.route("/generate", methods=["POST"])
@@ -326,7 +407,7 @@ async def generatePace():
     return redirect(url_for("resultado"))
 
 # ================================================
-# ROTAS DE PAGAMENTO (COMPLETAS)
+# ROTAS DE PAGAMENTO E WEBHOOK (MANTIDAS COMO ANTES)
 # ================================================
 
 @app.route("/iniciar_pagamento", methods=["GET", "POST"])
@@ -398,10 +479,6 @@ def assinar_plano_anual():
         logger.error(f"Erro ao registrar email: {e}")
 
     return redirect(url_for("iniciar_pagamento", email=email))
-
-# ================================================
-# WEBHOOK E EMAIL (COMPLETOS)
-# ================================================
 
 @app.route("/webhook/mercadopago", methods=["POST"])
 def mercadopago_webhook():
