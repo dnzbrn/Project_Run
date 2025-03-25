@@ -400,6 +400,18 @@ def send_plan_email():
         data = request.get_json()
         recipient = data.get('email')
         pdf_data = data.get('pdfData')
+        
+        # Obtém o tipo de treino da sessão
+        tipo_treino = session.get("titulo", "Plano de Treino")
+        
+        # Remove "Plano de " do título para deixar apenas "Corrida" ou "Pace"
+        tipo_treino_simplificado = tipo_treino.replace("Plano de ", "")
+        
+        # Data atual no formato AAAAMMDD
+        data_atual = datetime.now().strftime("%Y%m%d")
+        
+        # Nome do arquivo PDF conforme solicitado
+        nome_arquivo = f"TREINO_{tipo_treino_simplificado.upper().replace(' ', '_')}_{data_atual}.pdf"
 
         if not recipient or not pdf_data:
             return jsonify({
@@ -458,8 +470,8 @@ def send_plan_email():
             </div>
             
             <div class="content">
-                <h2>Obrigado por utilizar nossos serviços!</h2>
-                <p>Segue em anexo o seu plano de treino personalizado.</p>
+                <h2>Seu {tipo_treino} Personalizado</h2>
+                <p>Segue em anexo o seu {tipo_treino.lower()} personalizado.</p>
                 <p>Você pode acessar nosso site para mais informações:</p>
                 <a href="https://treinorun.com.br" class="btn">Acessar TreinoRun</a>
                 <p>Atenciosamente,<br>Equipe TreinoRun</p>
@@ -475,7 +487,7 @@ def send_plan_email():
 
         # Configura a mensagem
         msg = Message(
-            subject="Seu Plano de Treino - TreinoRun",
+            subject=f"Seu {tipo_treino} - TreinoRun",
             recipients=[recipient],
             html=email_html
         )
@@ -483,7 +495,7 @@ def send_plan_email():
         # Anexa o PDF
         pdf_content = base64.b64decode(pdf_data.split(',')[1])
         msg.attach(
-            "plano_treino.pdf",
+            nome_arquivo,
             "application/pdf",
             BytesIO(pdf_content).read()
         )
