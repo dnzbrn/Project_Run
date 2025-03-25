@@ -453,15 +453,30 @@ def send_plan_email():
                 .btn {{ 
                     display: inline-block; 
                     background-color: #2563eb; 
-                    color: white; 
+                    color: #ffffff !important; 
                     padding: 12px 24px; 
                     text-decoration: none; 
                     border-radius: 5px; 
                     margin: 15px 0;
                     font-weight: bold;
+                    text-align: center;
+                    border: 1px solid #1d4ed8;
                 }}
-                h1 {{ color: white; margin: 0; }}
-                h2 {{ color: #2563eb; }}
+                .btn:hover {{
+                    background-color: #1d4ed8;
+                }}
+                h1 {{ 
+                    color: white; 
+                    margin: 0; 
+                    font-size: 24px;
+                }}
+                h2 {{ 
+                    color: #2563eb; 
+                    margin-top: 0;
+                }}
+                p {{
+                    margin-bottom: 15px;
+                }}
             </style>
         </head>
         <body>
