@@ -626,14 +626,18 @@ def send_plan_email():
         recipient = data.get('email')
         pdf_data = data.get('pdfData')
         
-        tipo_treino = session.get("titulo", "Plano de Treino")
-        nome_arquivo = f"TREINO_{tipo_treino.upper().replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.pdf"
+        titulo_treino = session.get("titulo", "Plano de Treino")
+        
+        # Define o tipo de treino (Corrida ou Pace)
+        if "pace" in titulo_treino.lower():
+            tipo_treino = "Pace"
+        else:
+            tipo_treino = "Corrida"
 
-        if not recipient or not pdf_data:
-            return jsonify({"success": False, "message": "E-mail e PDF são obrigatórios"}), 400
+        nome_arquivo = f"TREINO_{tipo_treino.upper()}_{datetime.now().strftime('%Y%m%d')}.pdf"
 
         msg = Message(
-            subject=f"📝 Seu Plano de Treino - TreinoRun",
+            subject=f"📝 Seu Plano de {tipo_treino} - TreinoRun",  # Título dinâmico
             recipients=[recipient],
             html=f"""
             <!DOCTYPE html>
@@ -651,11 +655,11 @@ def send_plan_email():
             </head>
             <body>
                 <div class="header">
-                    <h2 style="margin:0;">Seu Plano de Treino Personalizado</h2>
+                    <h2 style="margin:0;">Seu Plano de {tipo_treino} Personalizado</h2>
                 </div>
                 <div class="content">
                     <p>Olá,</p>
-                    <p>Segue em anexo o seu plano <strong>{tipo_treino}</strong> gerado especialmente para você.</p>
+                    <p>Segue em anexo o seu plano <strong>{titulo_treino}</strong> gerado especialmente para você.</p>
                     
                     <div class="tip">
                         <p><strong>Dica:</strong> Imprima ou salve no seu dispositivo para fácil acesso durante os treinos!</p>
