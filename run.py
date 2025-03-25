@@ -1,56 +1,57 @@
 from flask import Flask, request, render_template, redirect, url_for, session, jsonify
+from flask.helpers import ensure_sync
 import os
 from sqlalchemy import create_engine, text
-from sqlalchemy.orm import scoped_session, sessionmaker
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker
 from datetime import datetime, timedelta
 import hmac
 import hashlib
-from openai import OpenAI
-import requests
+from openai import AsyncOpenAI
+import aiohttp
 import json
 from flask_mail import Mail, Message
 from io import BytesIO
 import base64
 import logging
 import re
+import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
 # ================================================
 # CONFIGURAÇÕES INICIAIS
 # ================================================
 
-# Configuração do Flask
-template_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Templates")
-app = Flask(__name__, template_folder=template_dir)
+app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY")
 
-# Configuração do Banco de Dados PostgreSQL com pool otimizado
-DATABASE_URL = os.getenv("DATABASE_URL")
-engine = create_engine(
+# Configuração do Banco de Dados PostgreSQL Async
+DATABASE_URL = os.getenv("DATABASE_URL").replace("postgresql://", "postgresql+asyncpg://")
+engine = create_async_engine(
     DATABASE_URL,
-    pool_size=15,
-    max_overflow=20,
+    pool_size=20,
+    max_overflow=30,
     pool_pre_ping=True,
     pool_recycle=3600
 )
-db = scoped_session(sessionmaker(
+AsyncSessionLocal = sessionmaker(
     bind=engine,
-    expire_on_commit=False,
-    autoflush=False
-))
+    class_=AsyncSession,
+    expire_on_commit=False
+)
 
 # Configurações de API
 MERCADO_PAGO_ACCESS_TOKEN = os.getenv("MERCADO_PAGO_ACCESS_TOKEN")
 MERCADO_PAGO_WEBHOOK_SECRET = os.getenv("MERCADO_PAGO_WEBHOOK_SECRET")
 
-# Configuração da OpenAI com timeout otimizado
-client = OpenAI(
+# Configuração da OpenAI Async
+client = AsyncOpenAI(
     api_key=os.getenv("OPENAI_API_KEY"),
-    timeout=20.0,
-    max_retries=2
+    timeout=30.0,
+    max_retries=3
 )
 
-# Configuração do Flask-Mail
+# Configuração do Flask-Mail (síncrono)
 app.config['MAIL_SERVER'] = 'smtp.zoho.com'
 app.config['MAIL_PORT'] = 587
 app.config['MAIL_USE_TLS'] = True
@@ -65,20 +66,25 @@ DISCLAIMER = "Este plano é gerado automaticamente. Consulte um profissional par
 # Configuração de logging para produção
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s %(levelname)s: %(message)s',
+    format='%(asctime)s %(levelname)s: %(message)s [%(filename)s:%(lineno)d]',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 logger = logging.getLogger(__name__)
 
-# Thread pool para operações assíncronas
+# Thread pool para operações síncronas
 executor = ThreadPoolExecutor(max_workers=10)
 
 # ================================================
-# FUNÇÕES AUXILIARES (OTIMIZADAS)
+# FUNÇÕES AUXILIARES (ASYNC)
 # ================================================
 
-def validar_assinatura(body, signature):
-    """Valida a assinatura do webhook do Mercado Pago de forma eficiente"""
+async def get_db_session():
+    """Retorna uma sessão assíncrona do banco de dados"""
+    async with AsyncSessionLocal() as session:
+        yield session
+
+async def validar_assinatura(body, signature):
+    """Valida a assinatura do webhook do Mercado Pago"""
     if not MERCADO_PAGO_WEBHOOK_SECRET:
         logger.error("Assinatura secreta do webhook não configurada")
         return False
@@ -92,113 +98,93 @@ def validar_assinatura(body, signature):
         return False
 
 async def pode_gerar_plano(email, plano):
-    """Verifica assincronamente se o usuário pode gerar um novo plano"""
+    """Verifica se o usuário pode gerar um novo plano"""
     try:
-        usuario = await asyncio.get_event_loop().run_in_executor(
-            executor,
-            lambda: db.execute(
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
                 text("SELECT * FROM usuarios WHERE email = :email"),
                 {"email": email}
-            ).mappings().fetchone()
-        )
+            )
+            usuario = result.mappings().first()
 
-        if plano == "anual":
-            if usuario:
-                assinatura = await asyncio.get_event_loop().run_in_executor(
-                    executor,
-                    lambda: db.execute(
-                        text("SELECT status FROM assinaturas WHERE usuario_id = :usuario_id ORDER BY id DESC LIMIT 1"),
+            if plano == "anual":
+                if usuario:
+                    result = await session.execute(
+                        text("""
+                            SELECT status FROM assinaturas 
+                            WHERE usuario_id = :usuario_id 
+                            ORDER BY id DESC LIMIT 1
+                        """),
                         {"usuario_id": usuario["id"]}
-                    ).mappings().fetchone()
-                )
-                return assinatura and assinatura["status"] == "active"
+                    )
+                    assinatura = result.mappings().first()
+                    return assinatura and assinatura["status"] == "active"
+                return False
+
+            elif plano == "gratuito":
+                if usuario and usuario["ultima_geracao"]:
+                    ultima_geracao = datetime.strptime(str(usuario["ultima_geracao"]), "%Y-%m-%d %H:%M:%S")
+                    return (datetime.now() - ultima_geracao).days >= 30
+                return True
+
             return False
-
-        elif plano == "gratuito":
-            if usuario and usuario["ultima_geracao"]:
-                ultima_geracao = datetime.strptime(str(usuario["ultima_geracao"]), "%Y-%m-%d %H:%M:%S")
-                return (datetime.now() - ultima_geracao).days >= 30
-            return True
-
-        return False
     except Exception as e:
         logger.error(f"Erro ao verificar permissão de geração: {e}")
         return False
 
-def calcular_semanas(tempo_melhoria):
-    """Calcula o número de semanas de forma otimizada"""
-    try:
-        tempo_melhoria = tempo_melhoria.lower().replace("meses", "mês").replace("mese", "mês")
-        
-        match = re.search(r'(\d+)\s*(semanas?|meses?|mês|m)', tempo_melhoria)
-        
-        if not match:
-            return 4
-        
-        valor = int(match.group(1))
-        unidade = match.group(2)
-        
-        if 'semana' in unidade:
-            return min(max(valor, 2), 52)
-        elif 'mes' in unidade or 'mês' in unidade or 'm' in unidade:
-            return min(max(valor * 4, 4), 52)
-        return 4
-    except Exception as e:
-        logger.error(f"Erro ao calcular semanas: {e}")
-        return 4
-
 async def registrar_geracao(email, plano):
-    """Registra a geração de forma assíncrona"""
+    """Registra a geração de um novo plano no banco de dados"""
     try:
         hoje = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        usuario = await asyncio.get_event_loop().run_in_executor(
-            executor,
-            lambda: db.execute(
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
                 text("SELECT * FROM usuarios WHERE email = :email"),
                 {"email": email}
-            ).mappings().fetchone()
-        )
+            )
+            usuario = result.mappings().first()
 
-        if not usuario:
-            await asyncio.get_event_loop().run_in_executor(
-                executor,
-                lambda: db.execute(
+            if not usuario:
+                await session.execute(
                     text("""
                         INSERT INTO usuarios (email, plano, data_inscricao, ultima_geracao)
                         VALUES (:email, :plano, :data_inscricao, :ultima_geracao)
                     """),
                     {"email": email, "plano": plano, "data_inscricao": hoje, "ultima_geracao": hoje},
                 )
-            )
-            usuario_id = await asyncio.get_event_loop().run_in_executor(
-                executor,
-                lambda: db.execute(text("SELECT id FROM usuarios WHERE email = :email"), {"email": email}).fetchone()[0]
-            )
-        else:
-            await asyncio.get_event_loop().run_in_executor(
-                executor,
-                lambda: db.execute(
-                    text("UPDATE usuarios SET ultima_geracao = :ultima_geracao, plano = :plano WHERE email = :email"),
+                await session.commit()
+                
+                result = await session.execute(
+                    text("SELECT id FROM usuarios WHERE email = :email"),
+                    {"email": email}
+                )
+                usuario_id = result.scalar_one()
+            else:
+                await session.execute(
+                    text("""
+                        UPDATE usuarios 
+                        SET ultima_geracao = :ultima_geracao, plano = :plano 
+                        WHERE email = :email
+                    """),
                     {"ultima_geracao": hoje, "email": email, "plano": plano},
                 )
-            )
-            usuario_id = usuario["id"]
+                await session.commit()
+                usuario_id = usuario["id"]
 
-        await asyncio.get_event_loop().run_in_executor(
-            executor,
-            lambda: db.execute(
-                text("INSERT INTO geracoes (usuario_id, data_geracao) VALUES (:usuario_id, :data_geracao)"),
+            await session.execute(
+                text("""
+                    INSERT INTO geracoes (usuario_id, data_geracao)
+                    VALUES (:usuario_id, :data_geracao)
+                """),
                 {"usuario_id": usuario_id, "data_geracao": hoje},
             )
-        )
-        db.commit()
+            await session.commit()
     except Exception as e:
         logger.error(f"Erro ao registrar geração: {e}")
-        db.rollback()
+        if 'session' in locals():
+            await session.rollback()
 
 async def gerar_plano_openai(prompt, semanas):
-    """Gera o plano de forma assíncrona com timeout"""
+    """Gera o plano de treino usando a API da OpenAI"""
     try:
         model = "gpt-3.5-turbo-16k" if semanas > 12 else "gpt-3.5-turbo"
         
@@ -208,59 +194,57 @@ async def gerar_plano_openai(prompt, semanas):
         1. Detalhe todas as {semanas} semanas individualmente
         2. A última semana deve atingir o objetivo final
         3. Progressão realista semana a semana
-        4. Nunca mencione "resposta separada" ou similar
-        5. Formato consistente para todas semanas
+        4. Formato consistente para todas semanas
+        5. Nunca mencione "continua" ou "próxima parte"
         """
 
-        response = await asyncio.wait_for(
-            asyncio.get_event_loop().run_in_executor(
-                executor,
-                lambda: client.chat.completions.create(
-                    model=model,
-                    messages=[
-                        {"role": "system", "content": "Você é um treinador de corrida experiente. Siga exatamente as instruções."},
-                        {"role": "user", "content": prompt_enhanced},
-                    ],
-                    temperature=0.7,
-                )
-            ),
-            timeout=25.0
+        response = await client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "Você é um treinador de corrida experiente. Siga exatamente as instruções."
+                },
+                {
+                    "role": "user", 
+                    "content": prompt_enhanced
+                },
+            ],
+            temperature=0.7,
+            timeout=30.0
         )
 
         plano = response.choices[0].message.content.strip()
         
-        # Verificação rápida de semanas faltantes
+        # Verificação de semanas faltantes
         if semanas <= 12 and plano.lower().count("semana") < semanas:
-            complemento = await asyncio.wait_for(
-                asyncio.get_event_loop().run_in_executor(
-                    executor,
-                    lambda: client.chat.completions.create(
-                        model=model,
-                        messages=[
-                            {"role": "system", "content": "Complete o plano com as semanas faltantes."},
-                            {"role": "user", "content": f"Complete as semanas {plano.lower().count('semana')+1} a {semanas}:\n{plano}"},
-                        ],
-                        max_tokens=1500,
-                        temperature=0.7,
-                    )
-                ),
-                timeout=15.0
+            complemento = await client.chat.completions.create(
+                model=model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "Complete o plano com as semanas faltantes."
+                    },
+                    {
+                        "role": "user",
+                        "content": f"Complete as semanas {plano.lower().count('semana')+1} a {semanas}:\n{plano}"
+                    },
+                ],
+                temperature=0.7,
+                timeout=20.0
             )
             plano += "\n\n" + complemento.choices[0].message.content.strip()
         
-        # Limpeza rápida do resultado
+        # Limpeza do resultado
         plano = re.sub(r"(próximas? semanas? (serão|em) (outra|uma) resposta)", "", plano, flags=re.IGNORECASE)
         return plano
         
-    except asyncio.TimeoutError:
-        logger.error("Timeout ao gerar plano com OpenAI")
-        return "Erro: tempo de resposta excedido. Tente novamente."
     except Exception as e:
         logger.error(f"Erro ao gerar plano: {e}")
-        return "Erro ao gerar o plano. Tente novamente mais tarde."
+        return "Erro ao gerar o plano. Por favor, tente novamente."
 
 # ================================================
-# ROTAS PRINCIPAIS (OTIMIZADAS)
+# ROTAS PRINCIPAIS (WRAPPERS ASYNC)
 # ================================================
 
 @app.route("/")
@@ -285,21 +269,29 @@ def pendente():
 
 @app.route("/resultado")
 def resultado():
-    titulo = session.get("titulo", "Plano de Treino")
-    plano = session.get("plano", "Nenhum plano gerado.")
-    return render_template("resultado.html", titulo=titulo, plano=plano)
+    if "plano" not in session:
+        return redirect(url_for("seutreino"))
+    return render_template(
+        "resultado.html",
+        titulo=session.get("titulo", "Plano de Treino"),
+        plano=session.get("plano")
+    )
 
 # ================================================
-# ROTAS DE GERACAO DE PLANOS (OTIMIZADAS)
+# ROTAS ASSÍNCRONAS PRINCIPAIS
 # ================================================
 
 @app.route("/generate", methods=["POST"])
-async def generate():
+def generate():
+    return ensure_sync(_generate)()
+
+async def _generate():
     try:
         dados_usuario = request.form
         required_fields = ["email", "plano", "objetivo", "tempo_melhoria", "nivel", "dias", "tempo"]
         
         if not all(field in dados_usuario for field in required_fields):
+            logger.error("Campos obrigatórios faltando")
             return "Dados incompletos", 400
 
         email = dados_usuario["email"]
@@ -308,16 +300,16 @@ async def generate():
         if not await pode_gerar_plano(email, plano):
             if plano == "anual":
                 return redirect(url_for("iniciar_pagamento", email=email))
-            return "Limite de geração atingido", 400
+            return redirect(url_for("seutreino", alerta="limite_atingido"))
 
         semanas = calcular_semanas(dados_usuario['tempo_melhoria'])
         
-        # Validação rápida de objetivos
+        # Validação de objetivos
         objetivo = dados_usuario['objetivo'].lower()
         if "maratona" in objetivo and semanas < 16:
-            return "Mínimo 16 semanas para maratona", 400
+            return redirect(url_for("seutreino", alerta="tempo_insuficiente_maratona"))
         elif "meia-maratona" in objetivo and semanas < 12:
-            return "Mínimo 12 semanas para meia-maratona", 400
+            return redirect(url_for("seutreino", alerta="tempo_insuficiente_meia"))
 
         prompt = f"""
         Crie um plano de corrida para {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']},
@@ -327,16 +319,19 @@ async def generate():
         SEMANAS: {semanas}
         OBJETIVO FINAL: Atingir {dados_usuario['objetivo']} na semana {semanas}
 
-        FORMATO EXIGIDO:
-        - Semana X: [Objetivo específico]
-          - Dia 1: [Tipo], [Tempo], [Detalhes]
-          - Dia 2: [Tipo], [Tempo], [Detalhes]
-          - [...]
+        INSTRUÇÕES:
+        1. Progressão semanal realista
+        2. Detalhar todos os dias de treino
+        3. Incluir aquecimento e desaquecimento
+        4. Variar intensidade conforme nível
         """
 
         plano_gerado = await gerar_plano_openai(prompt, semanas)
         
-        # Registrar em segundo plano sem bloquear a resposta
+        if "Erro ao gerar" in plano_gerado:
+            return redirect(url_for("seutreino", alerta="erro_geracao"))
+
+        # Registrar em segundo plano
         asyncio.create_task(registrar_geracao(email, plano))
 
         session["titulo"] = "Plano de Corrida"
@@ -344,11 +339,14 @@ async def generate():
         return redirect(url_for("resultado"))
 
     except Exception as e:
-        logger.error(f"Erro na geração: {e}")
-        return "Erro interno", 500
+        logger.error(f"Erro não tratado: {e}")
+        return redirect(url_for("erro"))
 
 @app.route("/generatePace", methods=["POST"])
-async def generatePace():
+def generatePace():
+    return ensure_sync(_generatePace)()
+
+async def _generatePace():
     try:
         dados_usuario = request.form
         required_fields = ["email", "plano", "objetivo", "tempo_melhoria", "nivel", "dias", "tempo"]
@@ -368,14 +366,15 @@ async def generatePace():
         
         # Parse do objetivo de pace
         try:
-            partes = dados_usuario['objetivo'].split("para")
+            partes = dados_usuario['objetivo'].lower().split("para")
             pace_inicial = float(partes[0].strip())
             pace_final = float(partes[1].strip())
             
             if (pace_inicial - pace_final)/semanas > 0.5:
-                return "Progressão muito rápida", 400
-        except:
-            pass
+                return redirect(url_for("seutreino", alerta="progressao_rapida"))
+        except Exception as e:
+            logger.error(f"Erro ao parsear pace: {e}")
+            return redirect(url_for("seutreino", alerta="formato_invalido"))
 
         prompt = f"""
         Crie um plano para melhorar o pace de {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']},
@@ -383,18 +382,21 @@ async def generatePace():
 
         NÍVEL: {dados_usuario['nivel']}
         SEMANAS: {semanas}
-        OBJETIVO FINAL: Pace de {pace_final} min/km na semana {semanas}
+        PACE INICIAL: {pace_inicial} min/km
+        PACE FINAL: {pace_final} min/km (atingir na semana {semanas})
 
-        FORMATO EXIGIDO:
-        - Semana X: [Pace alvo]
-          - Dia 1: [Tipo], [Pace], [Detalhes]
-          - Dia 2: [Tipo], [Pace], [Detalhes]
-          - [...]
+        INSTRUÇÕES:
+        1. Redução progressiva do pace
+        2. Incluir treinos intervalados e longos
+        3. Semana final deve atingir pace objetivo
+        4. Detalhar todos os treinos
         """
 
         plano_gerado = await gerar_plano_openai(prompt, semanas)
         
-        # Registrar em segundo plano
+        if "Erro ao gerar" in plano_gerado:
+            return redirect(url_for("seutreino", alerta="erro_geracao"))
+
         asyncio.create_task(registrar_geracao(email, plano))
 
         session["titulo"] = "Plano de Pace"
@@ -402,11 +404,11 @@ async def generatePace():
         return redirect(url_for("resultado"))
 
     except Exception as e:
-        logger.error(f"Erro na geração de pace: {e}")
-        return "Erro interno", 500
+        logger.error(f"Erro não tratado: {e}")
+        return redirect(url_for("erro"))
 
 # ================================================
-# ROTAS DE PAGAMENTO (OTIMIZADAS)
+# ROTAS DE PAGAMENTO (SÍNCRONAS COM TASKS ASYNC)
 # ================================================
 
 @app.route("/iniciar_pagamento", methods=["GET", "POST"])
@@ -415,14 +417,13 @@ def iniciar_pagamento():
         dados_usuario = request.form if request.method == "POST" else request.args
         email = dados_usuario.get("email")
         
-        if not email:
-            return "Email necessário", 400
+        if not email or not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+            return "Email inválido", 400
 
         # Registrar tentativa em segundo plano
         executor.submit(
-            lambda: db.execute(
-                text("INSERT INTO tentativas_pagamento (email, data_tentativa) VALUES (:email, NOW())"),
-                {"email": email}
+            lambda: asyncio.run(
+                registrar_tentativa_pagamento(email)
             )
         )
 
@@ -435,32 +436,48 @@ def iniciar_pagamento():
             }],
             "payer": {"email": email},
             "back_urls": {
-                "success": "https://treinorun.com.br/sucesso",
-                "failure": "https://treinorun.com.br/erro",
-                "pending": "https://treinorun.com.br/pendente",
+                "success": f"{os.getenv('BASE_URL')}/sucesso",
+                "failure": f"{os.getenv('BASE_URL')}/erro",
+                "pending": f"{os.getenv('BASE_URL')}/pendente",
             },
             "auto_return": "approved",
-            "notification_url": "https://treinorun.com.br/webhook/mercadopago",
+            "notification_url": f"{os.getenv('BASE_URL')}/webhook/mercadopago",
         }
 
-        response = requests.post(
-            "https://api.mercadopago.com/checkout/preferences",
-            headers={
-                "Authorization": f"Bearer {MERCADO_PAGO_ACCESS_TOKEN}",
-                "Content-Type": "application/json",
-            },
-            json=payload,
-            timeout=MERCADO_PAGO_TIMEOUT
-        )
-        response.raise_for_status()
-        return redirect(response.json()["init_point"])
+        async def criar_preferencia():
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    "https://api.mercadopago.com/checkout/preferences",
+                    headers={
+                        "Authorization": f"Bearer {MERCADO_PAGO_ACCESS_TOKEN}",
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                    timeout=10
+                ) as response:
+                    response.raise_for_status()
+                    return await response.json()
+
+        preferencia = asyncio.run(criar_preferencia())
+        return redirect(preferencia["init_point"])
         
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Erro Mercado Pago: {e}")
-        return "Erro no pagamento", 500
     except Exception as e:
-        logger.error(f"Erro inesperado: {e}")
-        return "Erro interno", 500
+        logger.error(f"Erro no pagamento: {e}")
+        return redirect(url_for("erro"))
+
+async def registrar_tentativa_pagamento(email):
+    try:
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                text("""
+                    INSERT INTO tentativas_pagamento (email, data_tentativa)
+                    VALUES (:email, NOW())
+                """),
+                {"email": email}
+            )
+            await session.commit()
+    except Exception as e:
+        logger.error(f"Erro ao registrar tentativa: {e}")
 
 # ================================================
 # WEBHOOK E EMAIL (OTIMIZADOS)
@@ -468,20 +485,21 @@ def iniciar_pagamento():
 
 @app.route("/webhook/mercadopago", methods=["POST"])
 def mercadopago_webhook():
+    return ensure_sync(_mercadopago_webhook)()
+
+async def _mercadopago_webhook():
     try:
         payload = request.json
         signature = request.headers.get("X-Signature")
         
         # Registrar log em segundo plano
-        executor.submit(
-            lambda: db.execute(
-                text("INSERT INTO logs_webhook (payload, status_processamento) VALUES (:payload, 'recebido')"),
-                {"payload": json.dumps(payload)}
-            )
+        asyncio.create_task(
+            registrar_log_webhook(payload)
         )
 
-        if not validar_assinatura(request.get_data(), signature):
-            raise ValueError("Assinatura inválida")
+        if not await validar_assinatura(request.get_data(), signature):
+            logger.warning("Assinatura inválida recebida")
+            return jsonify({"error": "Assinatura inválida"}), 401
 
         evento = payload.get("action")
         
@@ -489,15 +507,8 @@ def mercadopago_webhook():
             payment_id = payload.get("data", {}).get("id")
             status = payload.get("data", {}).get("status")
             
-            executor.submit(
-                lambda: db.execute(
-                    text("""
-                        INSERT INTO pagamentos (payment_id, status, data_pagamento)
-                        VALUES (:payment_id, :status, NOW())
-                        ON CONFLICT (payment_id) DO NOTHING
-                    """),
-                    {"payment_id": payment_id, "status": status}
-                )
+            asyncio.create_task(
+                registrar_pagamento(payment_id, status)
             )
 
         elif evento == "subscription.updated":
@@ -507,50 +518,129 @@ def mercadopago_webhook():
             nome = payload.get("data", {}).get("payer", {}).get("first_name", "Cliente")
 
             if email:
-                def processar_assinatura():
-                    usuario = db.execute(
-                        text("SELECT id FROM usuarios WHERE email = :email"),
-                        {"email": email}
-                    ).fetchone()
-
-                    if not usuario:
-                        db.execute(
-                            text("INSERT INTO usuarios (email, data_inscricao) VALUES (:email, NOW())"),
-                            {"email": email}
-                        )
-                        usuario_id = db.execute(
-                            text("SELECT id FROM usuarios WHERE email = :email"),
-                            {"email": email}
-                        ).fetchone()[0]
-                    else:
-                        usuario_id = usuario[0]
-
-                    db.execute(
-                        text("""
-                            INSERT INTO assinaturas (subscription_id, usuario_id, status, data_atualizacao)
-                            VALUES (:subscription_id, :usuario_id, :status, NOW())
-                            ON CONFLICT (subscription_id) DO UPDATE
-                            SET status = EXCLUDED.status, data_atualizacao = NOW()
-                        """),
-                        {"subscription_id": subscription_id, "usuario_id": usuario_id, "status": status},
-                    )
-
-                    if status == "active":
-                        executor.submit(enviar_email_confirmacao_pagamento, email, nome)
-
-                executor.submit(processar_assinatura)
+                asyncio.create_task(
+                    processar_assinatura(subscription_id, email, status, nome)
+                )
 
         return jsonify({"status": "success"}), 200
 
     except Exception as e:
         logger.error(f"Erro no webhook: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Erro interno"}), 500
+
+async def registrar_log_webhook(payload):
+    try:
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                text("""
+                    INSERT INTO logs_webhook (payload, status_processamento)
+                    VALUES (:payload, 'recebido')
+                """),
+                {"payload": json.dumps(payload)}
+            )
+            await session.commit()
+    except Exception as e:
+        logger.error(f"Erro ao registrar log: {e}")
+
+async def registrar_pagamento(payment_id, status):
+    try:
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                text("""
+                    INSERT INTO pagamentos (payment_id, status, data_pagamento)
+                    VALUES (:payment_id, :status, NOW())
+                    ON CONFLICT (payment_id) DO NOTHING
+                """),
+                {"payment_id": payment_id, "status": status}
+            )
+            await session.commit()
+    except Exception as e:
+        logger.error(f"Erro ao registrar pagamento: {e}")
+
+async def processar_assinatura(subscription_id, email, status, nome):
+    try:
+        async with AsyncSessionLocal() as session:
+            # Verificar/inserir usuário
+            result = await session.execute(
+                text("SELECT id FROM usuarios WHERE email = :email"),
+                {"email": email}
+            )
+            usuario = result.scalar()
+            
+            if not usuario:
+                await session.execute(
+                    text("""
+                        INSERT INTO usuarios (email, data_inscricao)
+                        VALUES (:email, NOW())
+                    """),
+                    {"email": email}
+                )
+                await session.commit()
+                
+                result = await session.execute(
+                    text("SELECT id FROM usuarios WHERE email = :email"),
+                    {"email": email}
+                )
+                usuario_id = result.scalar_one()
+            else:
+                usuario_id = usuario
+
+            # Atualizar assinatura
+            await session.execute(
+                text("""
+                    INSERT INTO assinaturas (subscription_id, usuario_id, status, data_atualizacao)
+                    VALUES (:subscription_id, :usuario_id, :status, NOW())
+                    ON CONFLICT (subscription_id) DO UPDATE
+                    SET status = EXCLUDED.status, data_atualizacao = NOW()
+                """),
+                {
+                    "subscription_id": subscription_id,
+                    "usuario_id": usuario_id,
+                    "status": status
+                }
+            )
+            await session.commit()
+
+            # Enviar e-mail se ativo
+            if status == "active":
+                executor.submit(
+                    enviar_email_confirmacao_pagamento,
+                    email,
+                    nome
+                )
+    except Exception as e:
+        logger.error(f"Erro ao processar assinatura: {e}")
+
+def enviar_email_confirmacao_pagamento(email, nome):
+    try:
+        msg = Message(
+            subject="Confirmação de Pagamento - Plano Anual",
+            recipients=[email],
+            html=f"""
+            <!DOCTYPE html>
+            <html>
+            <body>
+                <h2>Olá {nome},</h2>
+                <p>Seu pagamento foi confirmado com sucesso!</p>
+                <p>Agora você pode gerar planos ilimitados por 1 ano.</p>
+                <p>Acesse: <a href="{os.getenv('BASE_URL')}/seutreino">Gerar Planos</a></p>
+            </body>
+            </html>
+            """
+        )
+        mail.send(msg)
+        logger.info(f"E-mail enviado para {email}")
+    except Exception as e:
+        logger.error(f"Erro ao enviar e-mail: {e}")
 
 @app.route('/send_plan_email', methods=['POST'])
 def send_plan_email():
+    return ensure_sync(_send_plan_email)()
+
+async def _send_plan_email():
     try:
         if not request.is_json:
-            return jsonify({"success": False, "message": "JSON required"}), 400
+            return jsonify({"success": False, "message": "Requisição deve ser JSON"}), 400
 
         data = request.get_json()
         recipient = data.get('email')
@@ -559,22 +649,29 @@ def send_plan_email():
         if not recipient or not pdf_data:
             return jsonify({"success": False, "message": "Dados incompletos"}), 400
 
+        # Validar e-mail
+        if not re.match(r"[^@]+@[^@]+\.[^@]+", recipient):
+            return jsonify({"success": False, "message": "E-mail inválido"}), 400
+
         tipo_treino = session.get("titulo", "Plano de Treino")
         nome_arquivo = f"TREINO_{tipo_treino.upper().replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.pdf"
 
-        # Enviar email em segundo plano
+        # Enviar em segundo plano
         executor.submit(
-            lambda: _enviar_email_plano(recipient, tipo_treino, nome_arquivo, pdf_data)
+            enviar_email_com_anexo,
+            recipient,
+            tipo_treino,
+            nome_arquivo,
+            pdf_data
         )
 
-        return jsonify({"success": True, "message": "E-mail em processamento"})
+        return jsonify({"success": True, "message": "E-mail sendo processado"})
 
     except Exception as e:
         logger.error(f"Erro ao enviar e-mail: {e}")
         return jsonify({"success": False, "message": "Erro interno"}), 500
 
-def _enviar_email_plano(recipient, tipo_treino, nome_arquivo, pdf_data):
-    """Função auxiliar para envio de email em background"""
+def enviar_email_com_anexo(recipient, tipo_treino, nome_arquivo, pdf_data):
     try:
         msg = Message(
             subject=f"Seu {tipo_treino} - TreinoRun",
@@ -584,7 +681,7 @@ def _enviar_email_plano(recipient, tipo_treino, nome_arquivo, pdf_data):
             <html>
             <body>
                 <h2>Seu {tipo_treino} Personalizado</h2>
-                <p>Segue em anexo o seu plano de treino.</p>
+                <p>Segue em anexo o seu plano de treino gerado.</p>
                 <p>Atenciosamente,<br>Equipe TreinoRun</p>
             </body>
             </html>
@@ -594,14 +691,21 @@ def _enviar_email_plano(recipient, tipo_treino, nome_arquivo, pdf_data):
         pdf_content = base64.b64decode(pdf_data.split(',')[1])
         msg.attach(nome_arquivo, "application/pdf", pdf_content)
         mail.send(msg)
-        logger.info(f"E-mail enviado para: {recipient}")
+        logger.info(f"E-mail com anexo enviado para {recipient}")
     except Exception as e:
-        logger.error(f"Falha ao enviar e-mail: {e}")
+        logger.error(f"Falha ao enviar e-mail para {recipient}: {e}")
 
 # ================================================
 # INICIALIZAÇÃO
 # ================================================
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
+    from hypercorn.config import Config
+    from hypercorn.asyncio import serve
+    
+    config = Config()
+    config.bind = ["0.0.0.0:8080"]
+    config.worker_class = "asyncio"
+    config.workers = 2  # Ajuste conforme núcleos de CPU
+    
+    asyncio.run(serve(app, config))
