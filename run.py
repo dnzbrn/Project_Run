@@ -143,8 +143,8 @@ def gerar_plano_openai(prompt, semanas):
     """Gera o plano de treino usando a API da OpenAI com lógica de resumo"""
     try:
         # Configurações baseadas no tamanho do plano
-        model = "gpt-3.5-turbo"
-        max_tokens = 2500 if semanas <= 12 else 3500  # Mais tokens para planos longos
+        model = "gpt-3.5-turbo-16k" if semanas > 12 else "gpt-3.5-turbo"
+        max_tokens = 4000 if semanas > 12 else 2000
         
         response = client.chat.completions.create(
             model=model,
@@ -158,10 +158,12 @@ def gerar_plano_openai(prompt, semanas):
         plano = response.choices[0].message.content.strip()
         
         # Verifica se o plano parece completo
-        if semanas > 12 and "RESUMO DAS PRÓXIMAS SEMANAS" not in plano:
-            plano += "\n\nRESUMO DAS PRÓXIMAS SEMANAS:\n"
-            plano += "As semanas seguintes continuam a progressão com aumento gradual de intensidade.\n"
-            plano += "Consulte um treinador para adaptações personalizadas."
+        if semanas > 12 and "EXEMPLO DETALHADO" not in plano:
+            plano += "\n\nEXEMPLO DETALHADO DAS SEMANAS RESUMIDAS:\n"
+            plano += "- Segunda: 5min aquecimento + 30min corrida (10min a 6:30/km + 20min a 6:15/km) + 5min desaquecimento\n"
+            plano += "- Quarta: 8x400m a 5:00/km com 200m trote entre intervalos\n"
+            plano += "- Sexta: 5km leve a 7:00/km (recuperação)\n"
+            plano += "- Domingo: 12km progressivo (6km a 6:15/km + 6km a 6:00/km)"
             
         return plano
     except Exception as e:
@@ -314,7 +316,7 @@ def resultado():
     return render_template("resultado.html", titulo=titulo, plano=plano)
 
 # ================================================
-# ROTAS DE GERACAO DE PLANOS (ATUALIZADAS)
+# ROTAS DE GERACAO DE PLANOS
 # ================================================
 
 @app.route("/generate", methods=["POST"])
@@ -337,47 +339,50 @@ def generate():
     
     # Define a estratégia com base na duração
     if semanas <= 12:
-        estrategia = f"O plano deve detalhar TODAS AS {semanas} SEMANAS completas."
+        estrategia = f"O plano deve detalhar TODAS AS {semanas} SEMANAS completas com divisão temporal exata."
     else:
         estrategia = f"""
-        O plano deve detalhar as primeiras 12 semanas completas e depois incluir:
-        RESUMO DAS PRÓXIMAS SEMANAS:
-        - Progressão geral
-        - Principais mudanças
-        - Recomendações para continuidade
+        O plano deve:
+        1. Detalhar COMPLETAMENTE as primeiras 12 semanas
+        2. Resumir as semanas 13-{semanas} com:
+           - Progressão geral
+           - Exemplo detalhado de semana típica
+           - Recomendações para continuidade
         """
 
     prompt = f"""
     Crie um plano de corrida para {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']},
-    distribuído em {dados_usuario['dias']} dias por semana, com sessões de {dados_usuario['tempo']} minutos cada.
+    {dados_usuario['dias']} dias/semana, sessões de {dados_usuario['tempo']} minutos.
 
-    {estrategia}
+    NÍVEL: {dados_usuario['nivel']}
+    ESTRATÉGIA: {estrategia}
 
-    INSTRUÇÕES OBRIGATÓRIAS:
-    1. Nível: {dados_usuario['nivel']}
-    2. Dias/semana: {dados_usuario['dias']}
-    3. Tempo/sessão: {dados_usuario['tempo']} minutos
-    4. Objetivo: {dados_usuario['objetivo']}
+    FORMATO OBRIGATÓRIO PARA CADA SEMANA DETALHADA:
+    SEMANA [X]:
+    - Objetivo específico
+    - Dias de treino:
+      * Tipo (leve/moderado/intenso)
+      * TEMPO TOTAL: [min]
+      * DIVISÃO TEMPORAL: (ex: 5min aquecimento + 20min principal + 5min desaquecimento)
+      * Descrição completa
+      * Sensação esperada (ex: "confortável", "desafiador")
+    - Dias de descanso
 
-    ESTRUTURA:
-    1. SEMANAS DETALHADAS (1-12):
-       - Objetivo específico
-       - Treinos diários com:
-         * Tipo (leve/moderado/intenso)
-         * Duração exata
-         * Descrição completa
-       - Progressão clara
+    {"FORMATO PARA RESUMO (se aplicável):" if semanas > 12 else ""}
+    RESUMO SEMANAS 13-{semanas}:
+    - Progressão geral
+    - EXEMPLO DE SEMANA TÍPICA (com divisão temporal)
+    - Recomendações finais
 
-    2. RESUMO (se aplicável):
-       - Evolução geral
-       - Principais mudanças
-       - Recomendações finais
+    EXEMPLOS CONCRETOS REQUERIDOS:
+    - Moderado: 10min caminhada + 15min corrida (5min a 6:30/km + 10min a 6:15/km) + 5min caminhada
+    - Intenso: 5min aquecimento + 8x(2min a 5:45/km + 1min trote) + 5min desaquecimento
+    - Leve: 30min contínuo a 7:00/km
 
-    IMPORTANTE:
-    - Seja específico em cada treino
-    - Defina claramente intensidades
-    - Mantenha progressão lógica
-    - Inclua dicas de hidratação e alongamento
+    REGRAS ABSOLUTAS:
+    1. NUNCA use "similar às semanas anteriores"
+    2. SEMPRE especifique tempos EXATOS
+    3. Mantenha progressão lógica semana a semana
     """
     
     plano_gerado = gerar_plano_openai(prompt, semanas)
@@ -406,46 +411,47 @@ def generatePace():
     semanas = calcular_semanas(dados_usuario['tempo_melhoria'])
     
     if semanas <= 12:
-        estrategia = f"O plano deve detalhar TODAS AS {semanas} SEMANAS completas."
+        estrategia = f"Detalhar TODAS AS {semanas} SEMANAS com paces exatos e divisão temporal."
     else:
         estrategia = f"""
-        O plano deve detalhar as primeiras 12 semanas completas e depois incluir:
-        RESUMO DAS PRÓXIMAS SEMANAS:
+        Detalhar COMPLETAMENTE as primeiras 12 semanas e resumir as semanas 13-{semanas} com:
         - Progressão de pace
-        - Principais mudanças
-        - Recomendações para continuidade
+        - Exemplo de semana típica com paces específicos
+        - Recomendações finais
         """
 
     prompt = f"""
-    Crie um plano para melhorar o pace de {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']}.
+    Crie um plano para melhorar o pace de {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']},
+    {dados_usuario['dias']} dias/semana, sessões de {dados_usuario['tempo']} minutos.
 
-    {estrategia}
+    NÍVEL: {dados_usuario['nivel']}
+    ESTRATÉGIA: {estrategia}
 
-    INSTRUÇÕES OBRIGATÓRIAS:
-    1. Nível: {dados_usuario['nivel']}
-    2. Dias/semana: {dados_usuario['dias']}
-    3. Tempo/sessão: {dados_usuario['tempo']} minutos
-    4. Objetivo: {dados_usuario['objetivo']}
+    FORMATO OBRIGATÓRIO PARA CADA SEMANA DETALHADA:
+    SEMANA [X]:
+    - Objetivo de pace
+    - Dias de treino:
+      * Tipo (leve/moderado/intenso)
+      * PACE ALVO: [min/km]
+      * ESTRUTURA: (ex: 5min a 6:30/km + 20min a 6:00/km)
+      * Descrição completa
+    - Dias de descanso
 
-    ESTRUTURA:
-    1. SEMANAS DETALHADAS (1-12):
-       - Objetivo de pace
-       - Treinos diários com:
-         * Pace específico (min/km)
-         * Duração exata
-         * Descrição completa
-       - Progressão clara
+    {"FORMATO PARA RESUMO (se aplicável):" if semanas > 12 else ""}
+    RESUMO SEMANAS 13-{semanas}:
+    - Progressão geral de pace
+    - EXEMPLO DE SEMANA TÍPICA (com paces específicos)
+    - Recomendações finais
 
-    2. RESUMO (se aplicável):
-       - Evolução geral do pace
-       - Principais mudanças
-       - Recomendações finais
+    EXEMPLOS CONCRETOS REQUERIDOS:
+    - Intervalado: 5min a 6:30/km + 6x(400m a 5:00/km com 200m trote) + 5min a 6:30/km
+    - Longo: 10km progressivo (5km a 6:15/km + 5km a 6:00/km)
+    - Recuperação: 5km a 7:00/km
 
-    IMPORTANTE:
-    - Seja específico em cada treino
-    - Defina paces claramente
-    - Mantenha progressão lógica
-    - Inclua dicas de respiração e postura
+    REGRAS ABSOLUTAS:
+    1. NUNCA use "paces similares"
+    2. SEMPRE especifique paces EXATOS
+    3. Progressão realista semana a semana
     """
     
     plano_gerado = gerar_plano_openai(prompt, semanas)
