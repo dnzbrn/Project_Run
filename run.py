@@ -22,7 +22,7 @@ import re
 
 # Configura caminho absoluto para os templates
 basedir = os.path.abspath(os.path.dirname(__file__))
-template_dir = os.path.join(basedir, 'templates')
+template_dir = os.path.join(basedir, 'Templates')
 
 app = Flask(__name__, template_folder=template_dir)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "uma_chave_segura_aqui")
