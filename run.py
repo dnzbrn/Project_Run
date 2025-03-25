@@ -125,7 +125,7 @@ def gerar_plano_openai(prompt):
                 {"role": "system", "content": "Você é um treinador de corrida experiente."},
                 {"role": "user", "content": prompt},
             ],
-            max_tokens=1000,
+            max_tokens=1500,
             temperature=0.7,
         )
         return response.choices[0].message.content.strip()
@@ -164,7 +164,7 @@ def resultado():
     return render_template("resultado.html", titulo=titulo, plano=plano)
 
 # ================================================
-# ROTAS DE GERACAO DE PLANOS
+# ROTAS DE GERACAO DE PLANOS (ATUALIZADAS)
 # ================================================
 
 @app.route("/generate", methods=["POST"])
@@ -183,24 +183,49 @@ def generate():
             return redirect(url_for("iniciar_pagamento", email=email))
         return "Você já gerou um plano gratuito este mês. Atualize para o plano anual para gerar mais planos.", 400
 
+    # Definindo semanas com base no tempo de melhoria
+    semanas = 4  # Padrão para 1 mês
+    if "semana" in dados_usuario['tempo_melhoria'].lower():
+        semanas = int(dados_usuario['tempo_melhoria'].split()[0])
+    elif "mês" in dados_usuario['tempo_melhoria'].lower():
+        semanas = int(dados_usuario['tempo_melhoria'].split()[0]) * 4
+
     prompt = f"""
-    Crie um plano SEMANAL de corrida para {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']},
+    Crie um plano de corrida COMPLETO para {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']},
     distribuído em {dados_usuario['dias']} dias por semana, com sessões de {dados_usuario['tempo']} minutos cada.
-    
+    O plano deve cobrir TODAS AS {semanas} SEMANAS do período solicitado.
+
     Detalhes:
     - Nível: {dados_usuario['nivel']}
     - Dias disponíveis: {dados_usuario['dias']} dias/semana
     - Tempo diário: {dados_usuario['tempo']} minutos
     - Objetivo principal: {dados_usuario['objetivo']}
 
-    Estruture o plano:
-    1. Divida os treinos nos {dados_usuario['dias']} dias disponíveis.
-    2. Para cada dia, especifique:
+    ESTRUTURA PADRÃO:
+    1. Para CADA SEMANA, especifique:
+       - Objetivo da semana
+       - Evolução em relação à semana anterior
+    
+    2. Para CADA DIA DE TREINO, detalhe:
        - Tipo de treino (ex.: longo, intervalado, regenerativo)
-       - Duração (em minutos)
-       - Intensidade (leve/moderado/intenso)
-       - Descrição breve do exercício
-    3. Inclua um dia de descanso se {dados_usuario['dias']} < 7.
+       - Duração total (em minutos)
+       - Intensidade (com definição clara):
+         * LEVE: Exemplo: 10min caminhada + 5min corrida leve + 5min caminhada
+         * MODERADO: Exemplo: 5min caminhada + 15min corrida moderada + 5min caminhada
+         * INTENSO: Exemplo: 5min aquecimento + 20min corrida intensa + 5min desaquecimento
+       - Descrição detalhada do exercício
+       - Ritmo sugerido (se aplicável)
+    
+    3. Inclua:
+       - Dias de descanso (se {dados_usuario['dias']} < 7)
+       - Progressão semanal clara
+       - Observações sobre hidratação e alongamento
+
+    IMPORTANTE:
+    - Não repita "faça o mesmo da semana anterior"
+    - Cada semana deve ter treinos específicos
+    - Defina claramente o que é leve, moderado e intenso para o nível {dados_usuario['nivel']}
+    - Inclua tempos exatos para cada parte do treino
     """
     
     plano_gerado = gerar_plano_openai(prompt)
@@ -226,18 +251,46 @@ def generatePace():
             return redirect(url_for("iniciar_pagamento", email=email))
         return "Você já gerou um plano gratuito este mês. Atualize para o plano anual para gerar mais planos.", 400
 
+    # Definindo semanas com base no tempo de melhoria
+    semanas = 4  # Padrão para 1 mês
+    if "semana" in dados_usuario['tempo_melhoria'].lower():
+        semanas = int(dados_usuario['tempo_melhoria'].split()[0])
+    elif "mês" in dados_usuario['tempo_melhoria'].lower():
+        semanas = int(dados_usuario['tempo_melhoria'].split()[0]) * 4
+
     prompt = f"""
     Crie um plano detalhado para melhorar o pace de {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']}:
     - Nível: {dados_usuario['nivel']}
     - Dias disponíveis: {dados_usuario['dias']} dias/semana
     - Tempo diário: {dados_usuario['tempo']} minutos
+    - Período total: {semanas} semanas COMPLETAS
 
-    Para cada treino, forneça:
-    - Tipo de exercício (ex.: corrida leve, intervalados, tiros, etc.)
-    - Pace (ritmo de corrida) sugerido
-    - Tempo de duração do treino
+    ESTRUTURA PADRÃO:
+    1. Para CADA SEMANA, especifique:
+       - Objetivo específico de pace
+       - Evolução em relação à semana anterior
+    
+    2. Para CADA DIA DE TREINO, detalhe:
+       - Tipo de exercício (ex.: corrida leve, intervalados, tiros, etc.)
+       - Duração total (em minutos)
+       - Divisão de tempo por intensidade:
+         * LEVE: Exemplo: 10min caminhada + 5min corrida leve (pace X)
+         * MODERADO: Exemplo: 5min aquecimento + 15min corrida moderada (pace Y)
+         * INTENSO: Exemplo: 5min aquecimento + 5x(2min intenso + 1min caminhada)
+       - Pace sugerido para cada parte (em min/km)
+       - Frequência cardíaca alvo (se possível)
+    
+    3. Inclua:
+       - Progressão semanal do pace
+       - Dias de descanso ativo (se aplicável)
+       - Alongamentos específicos para ganho de velocidade
+       - Dicas de respiração e postura
 
-    Estruture o plano de forma semanal, listando os treinos por dia.
+    IMPORTANTE:
+    - Não repita "faça o mesmo da semana anterior"
+    - Cada semana deve ter treinos específicos
+    - Defina claramente os paces para cada intensidade
+    - Especifique tempos exatos para cada parte do treino
     """
     
     plano_gerado = gerar_plano_openai(prompt)
@@ -322,7 +375,7 @@ def assinar_plano_anual():
     return redirect(url_for("iniciar_pagamento", email=email))
 
 # ================================================
-# WEBHOOK E EMAIL
+# WEBHOOK E EMAIL (COM MELHORIAS NO BOTÃO)
 # ================================================
 
 @app.route("/webhook/mercadopago", methods=["POST"])
