@@ -17,10 +17,9 @@ import logging
 import re
 
 # ================================================
-# CONFIGURAÇÃO INICIAL COM CAMINHO DOS TEMPLATES
+# CONFIGURAÇÃO INICIAL
 # ================================================
 
-# Configura caminho absoluto para os templates
 basedir = os.path.abspath(os.path.dirname(__file__))
 template_dir = os.path.join(basedir, 'Templates')
 
@@ -38,19 +37,15 @@ def async_route(f):
 # CONFIGURAÇÕES DO BANCO DE DADOS E APIs
 # ================================================
 
-# Configuração do Banco de Dados PostgreSQL
 DATABASE_URL = os.getenv("DATABASE_URL")
 engine = create_engine(DATABASE_URL)
 db = scoped_session(sessionmaker(bind=engine))
 
-# Configuração do Mercado Pago
 MERCADO_PAGO_ACCESS_TOKEN = os.getenv("MERCADO_PAGO_ACCESS_TOKEN")
 MERCADO_PAGO_WEBHOOK_SECRET = os.getenv("MERCADO_PAGO_WEBHOOK_SECRET")
 
-# Configuração da OpenAI
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# Configuração do Flask-Mail
 app.config['MAIL_SERVER'] = 'smtp.zoho.com'
 app.config['MAIL_PORT'] = 587
 app.config['MAIL_USE_TLS'] = True
@@ -59,19 +54,16 @@ app.config['MAIL_PASSWORD'] = os.getenv('ZOHO_PASSWORD')
 app.config['MAIL_DEFAULT_SENDER'] = os.getenv('ZOHO_EMAIL')
 mail = Mail(app)
 
-# Variáveis globais
 DISCLAIMER = "Este plano é gerado automaticamente. Consulte um profissional para ajustes personalizados.\n\n"
 
-# Configuração de logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ================================================
-# FUNÇÕES AUXILIARES ATUALIZADAS
+# FUNÇÕES AUXILIARES
 # ================================================
 
 def validar_assinatura(body, signature):
-    """Valida a assinatura do webhook do Mercado Pago"""
     if not MERCADO_PAGO_WEBHOOK_SECRET:
         raise ValueError("Assinatura secreta do webhook não configurada.")
     chave_secreta = MERCADO_PAGO_WEBHOOK_SECRET.encode("utf-8")
@@ -79,7 +71,6 @@ def validar_assinatura(body, signature):
     return hmac.compare_digest(assinatura_esperada, signature)
 
 def pode_gerar_plano(email, plano):
-    """Verifica se o usuário pode gerar um novo plano"""
     usuario = db.execute(
         text("SELECT * FROM usuarios WHERE email = :email"),
         {"email": email}
@@ -103,13 +94,12 @@ def pode_gerar_plano(email, plano):
     return False
 
 def calcular_semanas(tempo_melhoria):
-    """Calcula o número de semanas com base no tempo de melhoria informado"""
     try:
         tempo_melhoria = tempo_melhoria.lower()
         match = re.search(r'(\d+)\s*(semanas?|meses?|mês)', tempo_melhoria)
         
         if not match:
-            return 4  # Default
+            return 4
         
         valor = int(match.group(1))
         unidade = match.group(2)
@@ -125,7 +115,6 @@ def calcular_semanas(tempo_melhoria):
         return 4
 
 def registrar_geracao(email, plano):
-    """Registra a geração de um novo plano no banco de dados"""
     hoje = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     usuario = db.execute(
         text("SELECT * FROM usuarios WHERE email = :email"),
@@ -155,7 +144,6 @@ def registrar_geracao(email, plano):
     db.commit()
 
 async def gerar_plano_openai(prompt, semanas):
-    """Gera o plano de treino usando a API da OpenAI"""
     try:
         model = "gpt-3.5-turbo-16k" if semanas > 12 else "gpt-3.5-turbo"
         
@@ -167,22 +155,12 @@ async def gerar_plano_openai(prompt, semanas):
             ],
             temperature=0.7,
         )
-        plano = response.choices[0].message.content.strip()
-        
-        if semanas > 12 and "EXEMPLO DETALHADO" not in plano:
-            plano += "\n\nEXEMPLO DETALHADO DAS SEMANAS RESUMIDAS:\n"
-            plano += "- Segunda: 5min aquecimento + 30min corrida (10min a 6:30/km + 20min a 6:15/km) + 5min desaquecimento\n"
-            plano += "- Quarta: 8x400m a 5:00/km com 200m trote entre intervalos\n"
-            plano += "- Sexta: 5km leve a 7:00/km (recuperação)\n"
-            plano += "- Domingo: 12km progressivo (6km a 6:15/km + 6km a 6:00/km)"
-            
-        return plano
+        return response.choices[0].message.content.strip()
     except Exception as e:
         logger.error(f"Erro ao gerar plano com OpenAI: {e}")
         return "Erro ao gerar o plano. Tente novamente mais tarde."
 
 def enviar_email_confirmacao_pagamento(email, nome="Cliente"):
-    """Envia e-mail de confirmação de pagamento"""
     try:
         msg = Message(
             subject="Confirmação de Pagamento - Plano Anual",
@@ -205,7 +183,7 @@ def enviar_email_confirmacao_pagamento(email, nome="Cliente"):
         logger.error(f"Erro ao enviar e-mail: {e}")
 
 # ================================================
-# ROTAS PRINCIPAIS (COM VERIFICAÇÃO DE TEMPLATES)
+# ROTAS PRINCIPAIS
 # ================================================
 
 @app.route("/")
@@ -308,7 +286,7 @@ def resultado():
         """, 200
 
 # ================================================
-# ROTAS DE GERACAO DE PLANOS ATUALIZADAS
+# ROTAS DE GERAÇÃO DE PLANOS
 # ================================================
 
 @app.route("/generate", methods=["POST"])
@@ -336,24 +314,41 @@ async def generate():
         return "Preparação para meia-maratona requer mínimo de 12 semanas", 400
 
     prompt = f"""
-    Crie um plano de corrida para {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']},
-    {dados_usuario['dias']} dias/semana, sessões de {dados_usuario['tempo']} minutos.
+    Crie um plano de corrida detalhado que GARANTA que o usuário atinja: {dados_usuario['objetivo']} 
+    em {dados_usuario['tempo_melhoria']}. Siga rigorosamente:
 
-    NÍVEL: {dados_usuario['nivel']}
-    SEMANAS: {semanas}
-    OBJETIVO FINAL: Atingir {dados_usuario['objetivo']} na semana {semanas}
-
-    INSTRUÇÕES:
-    1. Progressão semanal realista
-    2. Detalhar todos os dias de treino
-    3. Incluir aquecimento e desaquecimento
-    4. Variar intensidade conforme nível
-    """
+    REQUISITOS:
+    1. OBJETIVO FINAL:
+       - Na semana {semanas}, o usuário deve conseguir realizar: {dados_usuario['objetivo']}
     
+    2. ESTRUTURA DIÁRIA:
+       - Detalhe cada sessão com:
+         * Divisão do tempo em blocos
+         * Ritmos específicos para cada segmento
+         * Exemplo: "30min = 5' aquecimento (6:30/km) + 20' principal (10' a 6:00/km + 10' a 5:45/km) + 5' desaquecimento (7:00/km)"
+    
+    3. PROGRESSÃO SEMANAL:
+       - Mostre claramente como evolui até o objetivo final
+       - Exemplo:
+         "Semana 1: Corrida contínua a 6:40/km
+         Semana 4: Introdução a intervalos (5:50/km)
+         Semana {semanas}: Ritmo-alvo para {dados_usuario['objetivo']} (5:20/km)"
+    
+    4. ADAPTAÇÕES:
+       - Nível: {dados_usuario['nivel']}
+       - Dias/semana: {dados_usuario['dias']}
+       - Tempo/sessão: {dados_usuario['tempo']} minutos
+
+    FORMATO DE RESPOSTA:
+    - Semana a semana com descrição completa
+    - Ritmos específicos para cada tipo de treino
+    - Garantia de que na semana final o objetivo será alcançado
+    """
+
     plano_gerado = await gerar_plano_openai(prompt, semanas)
     registrar_geracao(email, plano)
 
-    session["titulo"] = "Plano de Corrida"
+    session["titulo"] = f"Plano para: {dados_usuario['objetivo']}"
     session["plano"] = DISCLAIMER + plano_gerado
     return redirect(url_for("resultado"))
 
@@ -377,16 +372,14 @@ async def generatePace():
     semanas = calcular_semanas(dados_usuario['tempo_melhoria'])
     
     try:
-        # Extrai os paces de forma flexível
         objetivo = dados_usuario['objetivo'].lower()
         
-        # Padrões de busca mais abrangentes
+        # Padrões flexíveis para extração de paces
         padrao1 = r'(\d+[\.,]?\d*)\s*(?:min(?:uto)?s?\/km|min\/km|min km|pace|ritmo)[^\d]*(\d+[\.,]?\d*)'
         padrao2 = r'(?:reduzir|melhorar|diminuir|baixar).*?(\d+[\.,]?\d*).*?para.*?(\d+[\.,]?\d*)'
         padrao3 = r'(\d+[\.,]?\d*)\s*\/\s*km.*?(\d+[\.,]?\d*)'
-        padrao4 = r'(\d+)[\.,:](\d+).*?(\d+)[\.,:](\d+)'  # Para formatos como 6:30 para 5:45
+        padrao4 = r'(\d+)[\.,:](\d+).*?(\d+)[\.,:](\d+)'
         
-        # Tenta encontrar os valores em diferentes formatos
         match = (re.search(padrao1, objetivo) or 
                  re.search(padrao2, objetivo) or 
                  re.search(padrao3, objetivo) or
@@ -398,52 +391,61 @@ async def generatePace():
                    "- 6.5 min/km para 5.8 min/km<br>" \
                    "- Melhorar ritmo de 7min/km para 6min30/km", 400
         
-        # Converte os valores para float, tratando diferentes formatos
-        if len(match.groups()) == 4:  # Formato 6:30 para 5:45
+        if len(match.groups()) == 4:
             pace_inicial = float(f"{match.group(1)}.{match.group(2)}")
             pace_final = float(f"{match.group(3)}.{match.group(4)}")
         else:
             pace_inicial = float(match.group(1).replace(',', '.'))
             pace_final = float(match.group(2).replace(',', '.'))
-        
-        # Validação da progressão
-        reducao_semanal = (pace_inicial - pace_final) / semanas
-        if reducao_semanal > 0.5:
-            return f"Progressão muito rápida ({reducao_semanal:.2f} min/km por semana). " \
-                   "Recomendamos no máximo 0.5 min/km por semana. " \
-                   "Ajuste seu objetivo ou aumente o tempo de treinamento.", 400
-        elif reducao_semanal < 0.05:
-            return "Progressão muito lenta. Verifique se os paces estão corretos.", 400
             
     except Exception as e:
         logger.error(f"Erro ao processar objetivo: {e}")
         return "Erro ao processar seu objetivo. Por favor, verifique o formato e tente novamente.", 400
 
     prompt = f"""
-    Crie um plano para melhorar o pace de {pace_inicial}min/km para {pace_final}min/km em {dados_usuario['tempo_melhoria']},
-    {dados_usuario['dias']} dias/semana, sessões de {dados_usuario['tempo']} minutos.
+    Crie um plano de MELHORIA DE RITMO que GARANTA a evolução de {pace_inicial}min/km para {pace_final}min/km 
+    em {dados_usuario['tempo_melhoria']}. Siga exatamente:
 
-    PACE INICIAL: {pace_inicial} min/km
-    PACE FINAL: {pace_final} min/km (atingir na semana {semanas})
-    NÍVEL: {dados_usuario['nivel']}
-
-    INSTRUÇÕES:
-    1. Progressão semanal detalhada
-    2. Treinos variados (intervalados, longos, recuperação)
-    3. Atingir pace objetivo na semana final
-    4. Incluir aquecimento e desaquecimento em cada sessão
-    5. Considerar o nível do corredor ({dados_usuario['nivel']})
-    """
+    REQUISITOS:
+    1. RESULTADO FINAL:
+       - Na semana {semanas}, o usuário deve conseguir correr consistentemente a {pace_final}min/km
     
+    2. TREINOS DIÁRIOS:
+       - Detalhe cada sessão com:
+         * Ritmos específicos para cada segmento
+         * Exemplo: 
+           "Quarta-feira:
+           - 10' aquecimento (6:40/km)
+           - 6x800m a 4:50/km (recuperação 400m a 7:00/km)
+           - 10' desaquecimento (6:30/km)"
+    
+    3. PROGRESSÃO MENSURÁVEL:
+       - Mostre a melhoria semanal do pace
+       - Exemplo:
+         "Semana 1: Intervalos a 5:30/km
+         Semana 4: Intervalos a 5:10/km
+         Semana 8: Intervalos a 4:50/km (ritmo-alvo)"
+    
+    4. PERSONALIZAÇÃO:
+       - Nível: {dados_usuario['nivel']}
+       - Dias/semana: {dados_usuario['dias']}
+       - Tempo/sessão: {dados_usuario['tempo']} minutos
+
+    FORMATO DE RESPOSTA:
+    - Semana a semana com evolução clara
+    - Ritmos precisos em todos os treinos
+    - Garantia de que o pace-alvo será alcançado
+    """
+
     plano_gerado = await gerar_plano_openai(prompt, semanas)
     registrar_geracao(email, plano)
 
-    session["titulo"] = "Plano de Pace"
+    session["titulo"] = f"Plano de Pace: {pace_inicial}min/km → {pace_final}min/km"
     session["plano"] = DISCLAIMER + plano_gerado
     return redirect(url_for("resultado"))
 
 # ================================================
-# ROTAS DE PAGAMENTO E WEBHOOK (MANTIDAS COMO ANTES)
+# ROTAS DE PAGAMENTO E WEBHOOK (COMPLETO)
 # ================================================
 
 @app.route("/iniciar_pagamento", methods=["GET", "POST"])
