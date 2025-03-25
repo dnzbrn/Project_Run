@@ -12,6 +12,7 @@ from flask_mail import Mail, Message
 from io import BytesIO
 import base64
 import logging
+import re
 
 # ================================================
 # CONFIGURAÇÕES INICIAIS
@@ -85,6 +86,28 @@ def pode_gerar_plano(email, plano):
         return True
 
     return False
+
+def calcular_semanas(tempo_melhoria):
+    """Calcula o número de semanas com base no tempo de melhoria informado"""
+    try:
+        tempo_melhoria = tempo_melhoria.lower()
+        match = re.search(r'(\d+)\s*(semanas?|meses?|mês)', tempo_melhoria)
+        
+        if not match:
+            return 4  # Default
+        
+        valor = int(match.group(1))
+        unidade = match.group(2)
+        
+        if 'semana' in unidade:
+            return valor
+        elif 'mes' in unidade or 'mês' in unidade:
+            return valor * 4  # 4 semanas por mês
+        else:
+            return 4  # Default
+    except Exception as e:
+        logger.error(f"Erro ao calcular semanas: {e}")
+        return 4  # Default em caso de erro
 
 def registrar_geracao(email, plano):
     """Registra a geração de um novo plano no banco de dados"""
@@ -279,7 +302,7 @@ def resultado():
     return render_template("resultado.html", titulo=titulo, plano=plano)
 
 # ================================================
-# ROTAS DE GERACAO DE PLANOS
+# ROTAS DE GERACAO DE PLANOS (ATUALIZADAS)
 # ================================================
 
 @app.route("/generate", methods=["POST"])
@@ -298,12 +321,8 @@ def generate():
             return redirect(url_for("iniciar_pagamento", email=email))
         return "Você já gerou um plano gratuito este mês. Atualize para o plano anual para gerar mais planos.", 400
 
-    # Definindo semanas com base no tempo de melhoria
-    semanas = 4  # Padrão para 1 mês
-    if "semana" in dados_usuario['tempo_melhoria'].lower():
-        semanas = int(dados_usuario['tempo_melhoria'].split()[0])
-    elif "mês" in dados_usuario['tempo_melhoria'].lower():
-        semanas = int(dados_usuario['tempo_melhoria'].split()[0]) * 4
+    # Calcula semanas corretamente
+    semanas = calcular_semanas(dados_usuario['tempo_melhoria'])
 
     prompt = f"""
     Crie um plano de corrida COMPLETO para {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']},
@@ -366,12 +385,8 @@ def generatePace():
             return redirect(url_for("iniciar_pagamento", email=email))
         return "Você já gerou um plano gratuito este mês. Atualize para o plano anual para gerar mais planos.", 400
 
-    # Definindo semanas com base no tempo de melhoria
-    semanas = 4  # Padrão para 1 mês
-    if "semana" in dados_usuario['tempo_melhoria'].lower():
-        semanas = int(dados_usuario['tempo_melhoria'].split()[0])
-    elif "mês" in dados_usuario['tempo_melhoria'].lower():
-        semanas = int(dados_usuario['tempo_melhoria'].split()[0]) * 4
+    # Calcula semanas corretamente
+    semanas = calcular_semanas(dados_usuario['tempo_melhoria'])
 
     prompt = f"""
     Crie um plano detalhado para melhorar o pace de {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']}:
