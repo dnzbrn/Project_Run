@@ -325,7 +325,7 @@
     </div>
   </div>
 
-  <!-- Modal Calendário de Corridas -->
+<!-- Modal Calendário de Corridas -->
 <div id="calendarioModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
   <div class="bg-white p-6 rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
     <div class="flex justify-between items-center mb-4">
@@ -336,9 +336,9 @@
         </svg>
       </button>
     </div>
-
+    
     <div id="eventosContainer" class="grid grid-cols-1 md:grid-cols-2 gap-6">
-      <p class="text-gray-500">Carregando eventos...</p>
+      <p class='text-gray-500'>Carregando eventos...</p>
     </div>
   </div>
 </div>
@@ -362,13 +362,14 @@
         if (colunas.length < 6) return; // Ignora linhas incompletas
 
         const [nome, data, horario, distancia, local, link] = colunas.map(col => col.trim());
+        const linkCorrigido = link.replace(/^"|"$/g, "").trim();
 
         const eventoHTML = `
           <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
             <h4 class="font-bold text-lg text-blue-600">${nome}</h4>
             <p class="text-gray-600 mt-1">${data} - ${horario}</p>
             <p class="mt-2">${distancia} - ${local}</p>
-            <a href="${link}" target="_blank" class="inline-block mt-3 text-green-600 hover:text-green-700 font-medium">Mais informações</a>
+            <a href="${linkCorrigido}" target="_blank" class="inline-block mt-3 text-green-600 hover:text-green-700 font-medium">Mais informações</a>
           </div>
         `;
         container.innerHTML += eventoHTML;
@@ -382,6 +383,7 @@
 
   document.addEventListener("DOMContentLoaded", carregarEventos);
 </script>
+
 
 <script>
   // Controle do menu lateral corrigido
