@@ -64,10 +64,28 @@
           <li><a href="/" class="block py-2 px-4 rounded bg-green-50 text-green-600 font-medium">Home</a></li>
           <li><a href="#formularios" class="block py-2 px-4 rounded hover:bg-gray-100">Criar Treino</a></li>
           <li><a href="{{ url_for('blog') }}" class="block py-2 px-4 rounded hover:bg-gray-100">Dicas</a></li>
-          <li><button onclick="mostrarCalendario()" class="w-full text-left py-2 px-4 rounded hover:bg-gray-100">Calendário de Corridas</button></li>
+          <li><button onclick="abrirCalendario()" class="w-full text-left py-2 px-4 rounded hover:bg-gray-100">Calendário de Corridas</button></li>
           <li><a href="#duvidas" class="block py-2 px-4 rounded hover:bg-gray-100">Tire Dúvidas</a></li>
         </ul>
       </nav>
+    </div>
+  </div>
+
+  <!-- Modal Calendário de Corridas -->
+  <div id="calendarioModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+    <div class="bg-white p-6 rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="text-2xl font-bold text-green-600">Calendário de Corridas</h3>
+        <button onclick="fecharCalendario()" class="text-gray-500 hover:text-gray-700">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      
+      <div id="eventosContainer" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <p class='text-gray-500'>Carregando eventos...</p>
+      </div>
     </div>
   </div>
 
@@ -326,75 +344,6 @@
   </div>
 
 <script>
-  async function carregarEventos() {
-    const url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT0D_0-jPKozi4rAtDbWL0PcLJIYYtio6B1Z3phIxTKWGcvr9G60EP_AwhzvYLYvyPhdogFOAEXQ80R/pub?output=csv";
-    const container = document.getElementById("eventosContainer");
-
-    container.innerHTML = "<p class='text-gray-500'>Carregando eventos...</p>";
-
-    try {
-      const resposta = await fetch(url);
-      const texto = await resposta.text();
-      
-      // Processamento mais cuidadoso do CSV
-      const linhas = texto.split('\n').filter(linha => linha.trim() !== '');
-      const cabecalhos = linhas[0].split(',').map(h => h.trim());
-      const indiceLink = cabecalhos.indexOf('link'); // Encontra o índice da coluna 'link'
-      
-      container.innerHTML = "";
-
-      for (let i = 1; i < linhas.length; i++) {
-        const valores = linhas[i].split(',').map(v => v.trim().replace(/^"(.*)"$/, '$1'));
-        const nome = valores[0] || 'Evento sem nome';
-        const data = valores[1] || '';
-        const horario = valores[2] || '';
-        const distancia = valores[3] || '';
-        const local = valores[4] || '';
-        let link = valores[indiceLink] || '';
-
-        // Correção robusta do link
-        if (link) {
-          // Remove possíveis quebras de linha
-          link = link.replace(/\r?\n|\r/g, '');
-          // Garante que começa com http:// ou https://
-          if (!link.startsWith('http')) {
-            // Se começa com www., adiciona https://
-            if (link.startsWith('www.')) {
-              link = 'https://' + link;
-            }
-            // Caso contrário, assume que é um caminho relativo ao domínio principal
-            else {
-              link = 'https://' + link;
-            }
-          }
-        }
-
-        const eventoHTML = `
-          <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
-            <h4 class="font-bold text-lg text-blue-600">${nome}</h4>
-            <p class="text-gray-600 mt-1">${data} ${horario ? ' - ' + horario : ''}</p>
-            <p class="mt-2">${distancia} ${local ? ' - ' + local : ''}</p>
-            ${link ? `
-              <a href="${link}" target="_blank" rel="noopener noreferrer" 
-                 class="inline-block mt-3 text-green-600 hover:text-green-700 font-medium">
-                Mais informações
-              </a>
-            ` : ''}
-          </div>
-        `;
-        container.innerHTML += eventoHTML;
-      }
-
-    } catch (error) {
-      container.innerHTML = "<p class='text-red-500'>Erro ao carregar eventos. Tente novamente.</p>";
-      console.error("Erro ao carregar eventos:", error);
-    }
-  }
-
-  document.addEventListener("DOMContentLoaded", carregarEventos);
-</script>
-
-<script>
   // Controle do menu lateral corrigido
   document.addEventListener('DOMContentLoaded', function() {
     const menuButton = document.getElementById('menuButton');
@@ -480,13 +429,13 @@
     document.getElementById('emailModal').classList.add('hidden');
   }
 
-  // Exibe o modal de calendário
-  function mostrarCalendario() {
+  // Funções para o modal de calendário
+  function abrirCalendario() {
     document.getElementById('calendarioModal').classList.remove('hidden');
     document.getElementById('sideMenu').classList.add('-translate-x-full');
+    carregarEventos();
   }
   
-  // Fecha o modal de calendário
   function fecharCalendario() {
     document.getElementById('calendarioModal').classList.add('hidden');
   }
@@ -529,6 +478,89 @@
     }
 
     form.submit();
+  }
+
+  // Função para carregar eventos do calendário
+  async function carregarEventos() {
+    const url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT0D_0-jPKozi4rAtDbWL0PcLJIYYtio6B1Z3phIxTKWGcvr9G60EP_AwhzvYLYvyPhdogFOAEXQ80R/pub?output=csv";
+    const container = document.getElementById("eventosContainer");
+
+    container.innerHTML = "<p class='text-gray-500'>Carregando eventos...</p>";
+
+    try {
+      const resposta = await fetch(url);
+      const texto = await resposta.text();
+      
+      // Processa o CSV manualmente (versão simplificada)
+      const linhas = texto.split('\n').filter(linha => linha.trim() !== '');
+      const cabecalhos = linhas[0].split(',').map(h => h.trim());
+      
+      // Encontra os índices das colunas
+      const indiceNome = cabecalhos.indexOf('nome');
+      const indiceData = cabecalhos.indexOf('data');
+      const indiceHorario = cabecalhos.indexOf('horario');
+      const indiceDistancia = cabecalhos.indexOf('distancia');
+      const indiceLocal = cabecalhos.indexOf('local');
+      const indiceLink = cabecalhos.indexOf('link');
+      
+      container.innerHTML = "";
+
+      for (let i = 1; i < linhas.length; i++) {
+        const valores = linhas[i].split(',').map(v => v.trim().replace(/^"(.*)"$/, '$1'));
+        
+        const nome = valores[indiceNome] || 'Evento sem nome';
+        const data = valores[indiceData] || '';
+        const horario = valores[indiceHorario] || '';
+        const distancia = valores[indiceDistancia] || '';
+        const local = valores[indiceLocal] || '';
+        let link = valores[indiceLink] || '';
+
+        // Correção robusta do link
+        if (link) {
+          // Remove possíveis quebras de linha
+          link = link.replace(/\r?\n|\r/g, '');
+          // Remove aspas extras se houver
+          link = link.replace(/^"(.*)"$/, '$1');
+          // Garante que começa com http:// ou https://
+          if (!link.startsWith('http')) {
+            // Se começa com www., adiciona https://
+            if (link.startsWith('www.')) {
+              link = 'https://' + link;
+            }
+            // Caso contrário, assume que é um caminho relativo ao domínio principal
+            else if (link.includes('.')) {
+              link = 'https://' + link;
+            }
+          }
+        }
+
+        const eventoHTML = `
+          <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
+            <h4 class="font-bold text-lg text-blue-600">${nome}</h4>
+            <p class="text-gray-600 mt-1">${data} ${horario ? ' - ' + horario : ''}</p>
+            <p class="mt-2">${distancia} ${local ? ' - ' + local : ''}</p>
+            ${link ? `
+              <a href="${link}" target="_blank" rel="noopener noreferrer" 
+                 class="inline-block mt-3 text-green-600 hover:text-green-700 font-medium">
+                Mais informações
+              </a>
+            ` : ''}
+          </div>
+        `;
+        container.innerHTML += eventoHTML;
+      }
+
+    } catch (error) {
+      container.innerHTML = `
+        <div class="col-span-2 text-center py-8">
+          <p class="text-red-500 font-medium">Erro ao carregar eventos.</p>
+          <button onclick="carregarEventos()" class="mt-4 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">
+            Tentar novamente
+          </button>
+        </div>
+      `;
+      console.error("Erro ao carregar eventos:", error);
+    }
   }
 </script>
 </body>
