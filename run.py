@@ -235,6 +235,26 @@ def landing():
         </html>
         """, 200
 
+@app.route("/blog")
+def blog():
+    try:
+        return render_template("blog.html")
+    except Exception as e:
+        logger.error(f"Erro ao renderizar blog.html: {e}")
+        return """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Blog - TreinoRun</title>
+        </head>
+        <body>
+            <h1>Blog TreinoRun</h1>
+            <p>Conteúdo do blog não pôde ser carregado.</p>
+            <a href="/">Voltar para a página inicial</a>
+        </body>
+        </html>
+        """, 200
+
 @app.route("/seutreino")
 def seutreino():
     try:
