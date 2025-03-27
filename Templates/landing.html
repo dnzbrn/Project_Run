@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Planos de treino personalizados para corrida e melhoria de pace. Transforme sua performance com nosso método especializado.">
   <script src="https://cdn.tailwindcss.com"></script>
   <title>Transforme sua Corrida | Treinos Personalizados</title>
   <style>
@@ -36,7 +37,7 @@
       background: #10b981;
       transition: width 0.3s ease;
     }
-    #planoModal, #emailModal {
+    #planoModal, #emailModal, #calendarioModal {
       transition: opacity 0.3s ease;
     }
     .border-red-500 {
@@ -46,6 +47,30 @@
 </head>
 <body class="bg-gray-50 text-gray-900">
   
+  <!-- Menu Lateral -->
+  <div class="fixed left-0 top-0 z-50">
+    <button id="menuButton" class="m-4 p-2 rounded-lg bg-white shadow-lg">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-gray-800" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+      </svg>
+    </button>
+    
+    <div id="sideMenu" class="fixed left-0 top-0 h-full w-64 bg-white shadow-xl transform -translate-x-full transition-transform duration-300 z-40">
+      <div class="p-4 border-b border-gray-200">
+        <h3 class="text-xl font-bold text-green-600">Menu</h3>
+      </div>
+      <nav class="p-4">
+        <ul class="space-y-3">
+          <li><a href="/" class="block py-2 px-4 rounded bg-green-50 text-green-600 font-medium">Home</a></li>
+          <li><a href="#formularios" class="block py-2 px-4 rounded hover:bg-gray-100">Criar Treino</a></li>
+          <li><a href="/blog" class="block py-2 px-4 rounded hover:bg-gray-100">Blog</a></li>
+          <li><button onclick="mostrarCalendario()" class="w-full text-left py-2 px-4 rounded hover:bg-gray-100">Calendário de Corridas</button></li>
+          <li><a href="#duvidas" class="block py-2 px-4 rounded hover:bg-gray-100">Tire Dúvidas</a></li>
+        </ul>
+      </nav>
+    </div>
+  </div>
+
   <!-- Seção Hero -->
   <header class="bg-gradient-to-r from-green-500 to-blue-500 text-white py-16 text-center fade-in">
     <h1 class="text-5xl font-bold">Supere seus limites na corrida!</h1>
@@ -59,15 +84,15 @@
   <section class="py-16 bg-white text-center fade-in">
     <h2 class="text-4xl font-bold text-green-700">Por que escolher nossos planos?</h2>
     <div class="mt-10 flex flex-wrap justify-center gap-8">
-      <div class="bg-gray-100 p-6 rounded-lg shadow-md w-full max-w-sm">
+      <div class="bg-gray-100 p-6 rounded-lg shadow-md w-full max-w-sm card-hover">
         <h3 class="text-2xl font-bold text-green-600">🏃‍♂️ Personalizado</h3>
         <p class="mt-4 text-gray-700">Treinos adaptados ao seu nível e objetivo.</p>
       </div>
-      <div class="bg-gray-100 p-6 rounded-lg shadow-md w-full max-w-sm">
+      <div class="bg-gray-100 p-6 rounded-lg shadow-md w-full max-w-sm card-hover">
         <h3 class="text-2xl font-bold text-blue-600">⏱️ Melhoria de Pace</h3>
         <p class="mt-4 text-gray-700">Aprenda a correr mais rápido e eficientemente.</p>
       </div>
-      <div class="bg-gray-100 p-6 rounded-lg shadow-md w-full max-w-sm">
+      <div class="bg-gray-100 p-6 rounded-lg shadow-md w-full max-w-sm card-hover">
         <h3 class="text-2xl font-bold text-green-600">📅 Flexibilidade</h3>
         <p class="mt-4 text-gray-700">Treine no seu ritmo, onde e quando quiser.</p>
       </div>
@@ -250,7 +275,7 @@
   </section>
 
   <!-- Seção de Tira Dúvidas -->
-  <section class="py-16 bg-white text-center fade-in">
+  <section id="duvidas" class="py-16 bg-white text-center fade-in">
     <h2 class="text-4xl font-bold text-green-700">Tire suas Dúvidas</h2>
     <div class="mt-10 max-w-2xl mx-auto bg-gray-100 p-8 rounded-lg shadow-md card-hover">
       <p class="text-lg text-gray-700 mb-6">Tem alguma dúvida sobre nossos planos ou treinos? Nossa equipe está pronta para te ajudar!</p>
@@ -300,7 +325,70 @@
     </div>
   </div>
 
+  <!-- Modal Calendário de Corridas -->
+  <div id="calendarioModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+    <div class="bg-white p-6 rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="text-2xl font-bold text-green-600">Calendário de Corridas</h3>
+        <button onclick="fecharCalendario()" class="text-gray-500 hover:text-gray-700">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- Evento 1 -->
+        <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
+          <h4 class="font-bold text-lg text-blue-600">Corrida da Cidade</h4>
+          <p class="text-gray-600 mt-1">10/03/2025 - 08:00</p>
+          <p class="mt-2">5km e 10km - Parque Central</p>
+          <a href="#" class="inline-block mt-3 text-green-600 hover:text-green-700 font-medium">Mais informações</a>
+        </div>
+        
+        <!-- Evento 2 -->
+        <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
+          <h4 class="font-bold text-lg text-blue-600">Meia Maratona do Litoral</h4>
+          <p class="text-gray-600 mt-1">24/03/2025 - 07:30</p>
+          <p class="mt-2">21km - Orla da Praia</p>
+          <a href="#" class="inline-block mt-3 text-green-600 hover:text-green-700 font-medium">Mais informações</a>
+        </div>
+        
+        <!-- Evento 3 -->
+        <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
+          <h4 class="font-bold text-lg text-blue-600">Corrida Noturna</h4>
+          <p class="text-gray-600 mt-1">05/04/2025 - 19:00</p>
+          <p class="mt-2">5km - Centro Histórico</p>
+          <a href="#" class="inline-block mt-3 text-green-600 hover:text-green-700 font-medium">Mais informações</a>
+        </div>
+        
+        <!-- Evento 4 -->
+        <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
+          <h4 class="font-bold text-lg text-blue-600">Maratona da Montanha</h4>
+          <p class="text-gray-600 mt-1">18/04/2025 - 06:00</p>
+          <p class="mt-2">42km - Parque das Montanhas</p>
+          <a href="#" class="inline-block mt-3 text-green-600 hover:text-green-700 font-medium">Mais informações</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
 <script>
+  // Controle do menu lateral
+  const menuButton = document.getElementById('menuButton');
+  const sideMenu = document.getElementById('sideMenu');
+  
+  menuButton.addEventListener('click', () => {
+    sideMenu.classList.toggle('-translate-x-full');
+  });
+  
+  // Fechar menu ao clicar fora
+  document.addEventListener('click', (e) => {
+    if (!sideMenu.contains(e.target) && e.target !== menuButton) {
+      sideMenu.classList.add('-translate-x-full');
+    }
+  });
+
   // Função para avançar etapas (passos) do formulário
   function nextStep(formPrefix, currentStep, nextStepNumber) {
     const currentElement = document.getElementById(formPrefix + currentStep);
@@ -310,7 +398,7 @@
     inputs.forEach(input => {
       if (!input.value.trim()) {
         isValid = false;
-        input.classList.add('border-red-500'); // Adiciona borda vermelha para campos inválidos
+        input.classList.add('border-red-500');
       } else {
         input.classList.remove('border-red-500');
       }
@@ -337,7 +425,7 @@
     const progressBar = document.getElementById(progressBarId);
     if (progressBar) {
       const progressFill = progressBar.querySelector(".progress-bar-fill");
-      const totalSteps = 5; // total de etapas em cada formulário
+      const totalSteps = 5;
       const progressWidth = (nextStepNumber / totalSteps) * 100;
       progressFill.style.width = progressWidth + "%";
     }
@@ -347,42 +435,47 @@
   function mostrarModal(formId) {
     const modal = document.getElementById('planoModal');
     modal.classList.remove('hidden');
-    // Define qual formulário foi usado
     modal.dataset.formId = formId;
   }
 
   // Fecha o modal manualmente
   function fecharModal() {
-    const modal = document.getElementById('planoModal');
-    modal.classList.add('hidden');
+    document.getElementById('planoModal').classList.add('hidden');
   }
 
   // Exibe o modal de e-mail
   function mostrarEmailModal() {
-    const modal = document.getElementById('emailModal');
-    modal.classList.remove('hidden');
+    document.getElementById('emailModal').classList.remove('hidden');
   }
 
   // Fecha o modal de e-mail
   function fecharEmailModal() {
-    const modal = document.getElementById('emailModal');
-    modal.classList.add('hidden');
+    document.getElementById('emailModal').classList.add('hidden');
+  }
+
+  // Exibe o modal de calendário
+  function mostrarCalendario() {
+    document.getElementById('calendarioModal').classList.remove('hidden');
+    document.getElementById('sideMenu').classList.add('-translate-x-full');
+  }
+  
+  // Fecha o modal de calendário
+  function fecharCalendario() {
+    document.getElementById('calendarioModal').classList.add('hidden');
   }
 
   // Função para escolher o plano (Grátis ou Pago) e exibir o modal de e-mail
   function selecionarPlano(plano) {
     const modal = document.getElementById('planoModal');
-    const formId = modal.dataset.formId; // 'formCorrida' ou 'formPace'
+    const formId = modal.dataset.formId;
     const form = document.getElementById(formId);
 
-    // Guarda o plano escolhido no formulário
     const inputPlano = document.createElement('input');
     inputPlano.type = 'hidden';
     inputPlano.name = 'plano';
     inputPlano.value = plano;
     form.appendChild(inputPlano);
 
-    // Fecha o modal de planos e abre o modal de e-mail
     fecharModal();
     mostrarEmailModal();
   }
@@ -393,21 +486,19 @@
 
     const email = document.getElementById('userEmail').value;
     const modal = document.getElementById('planoModal');
-    const formId = modal.dataset.formId; // 'formCorrida' ou 'formPace'
+    const formId = modal.dataset.formId;
     const form = document.getElementById(formId);
 
-    // Adiciona o e-mail ao formulário
     const inputEmail = document.createElement('input');
     inputEmail.type = 'hidden';
     inputEmail.name = 'email';
     inputEmail.value = email;
     form.appendChild(inputEmail);
 
-    // Submete o formulário
     if (formId === 'formCorrida') {
-      form.action = '/generate'; // Rota para gerar o plano de corrida
+      form.action = '/generate';
     } else if (formId === 'formPace') {
-      form.action = '/generatePace'; // Rota para gerar o plano de pace
+      form.action = '/generatePace';
     }
 
     form.submit();
