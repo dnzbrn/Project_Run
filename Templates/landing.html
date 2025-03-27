@@ -362,7 +362,7 @@
         if (colunas.length < 6) return; // Ignora linhas incompletas
 
         const [nome, data, horario, distancia, local, link] = colunas.map(col => col.trim());
-        const linkCorrigido = link.replace(/^"|"$/g, "").trim();
+        const linkCorrigido = link.startsWith("http") ? link : `https://${link}`; // Corrige links ausentes de protocolo
 
         const eventoHTML = `
           <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
