@@ -47,9 +47,9 @@
 </head>
 <body class="bg-gray-50 text-gray-900">
   
-  <!-- Menu Lateral -->
+  <!-- Menu Lateral Atualizado -->
   <div class="fixed left-0 top-0 z-50">
-    <button id="menuButton" class="m-4 p-2 rounded-lg bg-white shadow-lg">
+    <button id="menuButton" class="m-4 p-2 rounded-lg bg-white shadow-lg focus:outline-none">
       <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-gray-800" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
       </svg>
@@ -63,7 +63,7 @@
         <ul class="space-y-3">
           <li><a href="/" class="block py-2 px-4 rounded bg-green-50 text-green-600 font-medium">Home</a></li>
           <li><a href="#formularios" class="block py-2 px-4 rounded hover:bg-gray-100">Criar Treino</a></li>
-          <li><a href="/blog" class="block py-2 px-4 rounded hover:bg-gray-100">Blog</a></li>
+          <li><a href="blog.html" class="block py-2 px-4 rounded hover:bg-gray-100">Blog</a></li>
           <li><button onclick="mostrarCalendario()" class="w-full text-left py-2 px-4 rounded hover:bg-gray-100">Calendário de Corridas</button></li>
           <li><a href="#duvidas" class="block py-2 px-4 rounded hover:bg-gray-100">Tire Dúvidas</a></li>
         </ul>
@@ -374,19 +374,25 @@
   </div>
 
 <script>
-  // Controle do menu lateral
-  const menuButton = document.getElementById('menuButton');
-  const sideMenu = document.getElementById('sideMenu');
-  
-  menuButton.addEventListener('click', () => {
-    sideMenu.classList.toggle('-translate-x-full');
-  });
-  
-  // Fechar menu ao clicar fora
-  document.addEventListener('click', (e) => {
-    if (!sideMenu.contains(e.target) && e.target !== menuButton) {
-      sideMenu.classList.add('-translate-x-full');
-    }
+  // Controle do menu lateral corrigido
+  document.addEventListener('DOMContentLoaded', function() {
+    const menuButton = document.getElementById('menuButton');
+    const sideMenu = document.getElementById('sideMenu');
+    
+    menuButton.addEventListener('click', function(e) {
+      e.stopPropagation();
+      sideMenu.classList.toggle('-translate-x-full');
+    });
+    
+    document.addEventListener('click', function(e) {
+      if (!sideMenu.contains(e.target) && e.target !== menuButton) {
+        sideMenu.classList.add('-translate-x-full');
+      }
+    });
+    
+    sideMenu.addEventListener('click', function(e) {
+      e.stopPropagation();
+    });
   });
 
   // Função para avançar etapas (passos) do formulário
