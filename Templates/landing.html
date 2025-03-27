@@ -326,52 +326,62 @@
   </div>
 
   <!-- Modal Calendário de Corridas -->
-  <div id="calendarioModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
-    <div class="bg-white p-6 rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-      <div class="flex justify-between items-center mb-4">
-        <h3 class="text-2xl font-bold text-green-600">Calendário de Corridas</h3>
-        <button onclick="fecharCalendario()" class="text-gray-500 hover:text-gray-700">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-      </div>
-      
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <!-- Evento 1 -->
-        <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
-          <h4 class="font-bold text-lg text-blue-600">Corrida da Cidade</h4>
-          <p class="text-gray-600 mt-1">10/03/2025 - 08:00</p>
-          <p class="mt-2">5km e 10km - Parque Central</p>
-          <a href="#" class="inline-block mt-3 text-green-600 hover:text-green-700 font-medium">Mais informações</a>
-        </div>
-        
-        <!-- Evento 2 -->
-        <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
-          <h4 class="font-bold text-lg text-blue-600">Meia Maratona do Litoral</h4>
-          <p class="text-gray-600 mt-1">24/03/2025 - 07:30</p>
-          <p class="mt-2">21km - Orla da Praia</p>
-          <a href="#" class="inline-block mt-3 text-green-600 hover:text-green-700 font-medium">Mais informações</a>
-        </div>
-        
-        <!-- Evento 3 -->
-        <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
-          <h4 class="font-bold text-lg text-blue-600">Corrida Noturna</h4>
-          <p class="text-gray-600 mt-1">05/04/2025 - 19:00</p>
-          <p class="mt-2">5km - Centro Histórico</p>
-          <a href="#" class="inline-block mt-3 text-green-600 hover:text-green-700 font-medium">Mais informações</a>
-        </div>
-        
-        <!-- Evento 4 -->
-        <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
-          <h4 class="font-bold text-lg text-blue-600">Maratona da Montanha</h4>
-          <p class="text-gray-600 mt-1">18/04/2025 - 06:00</p>
-          <p class="mt-2">42km - Parque das Montanhas</p>
-          <a href="#" class="inline-block mt-3 text-green-600 hover:text-green-700 font-medium">Mais informações</a>
-        </div>
-      </div>
+<div id="calendarioModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+  <div class="bg-white p-6 rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+    <div class="flex justify-between items-center mb-4">
+      <h3 class="text-2xl font-bold text-green-600">Calendário de Corridas</h3>
+      <button onclick="fecharCalendario()" class="text-gray-500 hover:text-gray-700">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+
+    <div id="eventosContainer" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <p class="text-gray-500">Carregando eventos...</p>
     </div>
   </div>
+</div>
+
+<script>
+  async function carregarEventos() {
+    const url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT0D_0-jPKozi4rAtDbWL0PcLJIYYtio6B1Z3phIxTKWGcvr9G60EP_AwhzvYLYvyPhdogFOAEXQ80R/pub?output=csv";
+    const container = document.getElementById("eventosContainer");
+
+    container.innerHTML = "<p class='text-gray-500'>Carregando eventos...</p>";
+
+    try {
+      const resposta = await fetch(url);
+      const texto = await resposta.text();
+      const linhas = texto.split("\n").slice(1); // Remove cabeçalho
+
+      container.innerHTML = ""; // Limpa antes de adicionar eventos
+
+      linhas.forEach(linha => {
+        const colunas = linha.split(",");
+        if (colunas.length < 6) return; // Ignora linhas incompletas
+
+        const [nome, data, horario, distancia, local, link] = colunas.map(col => col.trim());
+
+        const eventoHTML = `
+          <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
+            <h4 class="font-bold text-lg text-blue-600">${nome}</h4>
+            <p class="text-gray-600 mt-1">${data} - ${horario}</p>
+            <p class="mt-2">${distancia} - ${local}</p>
+            <a href="${link}" target="_blank" class="inline-block mt-3 text-green-600 hover:text-green-700 font-medium">Mais informações</a>
+          </div>
+        `;
+        container.innerHTML += eventoHTML;
+      });
+
+    } catch (error) {
+      container.innerHTML = "<p class='text-red-500'>Erro ao carregar eventos.</p>";
+      console.error("Erro ao buscar eventos:", error);
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", carregarEventos);
+</script>
 
 <script>
   // Controle do menu lateral corrigido
