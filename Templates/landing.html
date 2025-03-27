@@ -371,184 +371,199 @@
       abrirCalendario();
     }
   });
+// Variáveis de controle
+let modalCalendarioAberto = false;
+let eventosCarregados = false;
 
-  // Variáveis de controle do modal de calendário
-  let modalCalendarioAberto = false;
-  let eventosCarregados = false;
+// Funções do modal de calendário
+function abrirCalendario() {
+  const modal = document.getElementById('calendarioModal');
+  modal.classList.remove('hidden');
+  modalCalendarioAberto = true;
+  
+  if (!eventosCarregados) {
+    carregarEventos();
+  }
+}
 
-  // Funções do modal de calendário
-  function abrirCalendario() {
-    const modal = document.getElementById('calendarioModal');
-    modal.classList.remove('hidden');
-    modalCalendarioAberto = true;
+function fecharCalendario() {
+  document.getElementById('calendarioModal').classList.add('hidden');
+  modalCalendarioAberto = false;
+}
+
+// Função principal para carregar eventos - VERSÃO FINAL CORRIGIDA
+async function carregarEventos() {
+  const container = document.getElementById("eventosContainer");
+  
+  try {
+    // Mostrar loader
+    container.innerHTML = '<div class="flex justify-center py-8"><div class="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-green-600"></div></div>';
+
+    // URL da planilha pública
+    const planilhaId = "2PACX-1vT0D_0-jPKozi4rAtDbWL0PcLJIYYtio6B1Z3phIxTKWGcvr9G60EP_AwhzvYLYvyPhdogFOAEXQ80R";
+    const csvUrl = `https://docs.google.com/spreadsheets/d/e/${planilhaId}/pub?output=csv`;
     
-    if (!eventosCarregados) {
-      carregarEventos();
+    // Usando CORS Proxy para evitar problemas
+    const proxyUrl = `https://cors-anywhere.herokuapp.com/${csvUrl}`;
+    
+    // Fetch dos dados
+    const response = await fetch(proxyUrl, {
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest'
+      }
+    });
+    
+    if (!response.ok) throw new Error('Erro ao carregar dados');
+    
+    const csvData = await response.text();
+    
+    if (!csvData) throw new Error('Dados vazios');
+    
+    // Processar o CSV
+    const linhas = csvData.split('\n').filter(linha => linha.trim() !== '');
+    
+    if (linhas.length < 2) {
+      container.innerHTML = '<p class="text-gray-500 text-center py-8">Nenhum evento encontrado na planilha.</p>';
+      return;
     }
+
+    // Processar cabeçalhos
+    const cabecalhos = linhas[0].split(',').map(h => h.trim().toLowerCase());
     
-    document.getElementById('sideMenu').classList.add('-translate-x-full');
-  }
+    // Mapear colunas
+    const colunas = {
+      nome: cabecalhos.indexOf('nome'),
+      data: cabecalhos.indexOf('data'),
+      horario: cabecalhos.indexOf('horario'),
+      distancia: cabecalhos.indexOf('distancia'),
+      local: cabecalhos.indexOf('local'),
+      link: cabecalhos.indexOf('link')
+    };
 
-  function fecharCalendario() {
-    document.getElementById('calendarioModal').classList.add('hidden');
-    modalCalendarioAberto = false;
-  }
-
-  // Função para carregar eventos do calendário - VERSÃO CORRIGIDA
-  async function carregarEventos() {
-    const container = document.getElementById("eventosContainer");
+    // Construir HTML dos eventos
+    let eventosHTML = [];
     
-    try {
-      // Mostrar loader
-      container.innerHTML = '<div class="flex justify-center py-8"><div class="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-green-600"></div></div>';
+    for (let i = 1; i < linhas.length; i++) {
+      // Processar linha considerando valores entre aspas
+      const valores = linhas[i].match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || [];
+      const valoresLimpos = valores.map(v => v.trim().replace(/^"(.*)"$/, '$1'));
+      
+      const getValor = (indice) => indice >= 0 && indice < valoresLimpos.length ? valoresLimpos[indice] : '';
+      
+      const nome = getValor(colunas.nome) || 'Corrida';
+      const data = formatarData(getValor(colunas.data));
+      const horario = getValor(colunas.horario);
+      const distancia = getValor(colunas.distancia);
+      const local = getValor(colunas.local);
+      const link = formatarLink(getValor(colunas.link));
 
-      // URL da planilha pública com proxy para evitar CORS
-      const csvUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT0D_0-jPKozi4rAtDbWL0PcLJIYYtio6B1Z3phIxTKWGcvr9G60EP_AwhzvYLYvyPhdogFOAEXQ80R/pub?output=csv";
-      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(csvUrl)}`;
-      
-      // Fetch dos dados
-      const response = await fetch(proxyUrl);
-      if (!response.ok) throw new Error('Erro ao carregar dados');
-      
-      const data = await response.json();
-      const csvData = data.contents;
-      
-      if (!csvData) throw new Error('Dados vazios');
-      
-      const linhas = csvData.split('\n').filter(linha => linha.trim() !== '');
-      
-      if (linhas.length < 2) {
-        container.innerHTML = '<p class="text-gray-500 text-center py-8">Nenhum evento encontrado.</p>';
-        return;
+      // Construir card do evento
+      let eventoHTML = `
+        <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition fade-in">
+          <h4 class="font-bold text-lg text-blue-600">${nome}</h4>
+          <div class="flex items-center mt-1 text-gray-600">
+            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+            </svg>
+            ${data}${horario ? ' • ' + horario : ''}
+          </div>`;
+
+      // Adicionar distância se existir
+      if (distancia) {
+        eventoHTML += `
+          <div class="mt-2 flex items-center text-gray-600">
+            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+            </svg>
+            ${distancia}
+          </div>`;
       }
 
-      // Processar cabeçalhos
-      const cabecalhos = linhas[0].split(',').map(h => h.trim().toLowerCase());
-      
-      // Mapear colunas
-      const colunas = {
-        nome: cabecalhos.indexOf('nome'),
-        data: cabecalhos.indexOf('data'),
-        horario: cabecalhos.indexOf('horario'),
-        distancia: cabecalhos.indexOf('distancia'),
-        local: cabecalhos.indexOf('local'),
-        link: cabecalhos.indexOf('link')
-      };
-
-      // Construir HTML dos eventos
-      let eventosHTML = [];
-      
-      for (let i = 1; i < linhas.length; i++) {
-        const valores = linhas[i].split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/).map(v => v.trim().replace(/^"(.*)"$/, '$1'));
-        
-        const getValor = (indice) => indice >= 0 && indice < valores.length ? valores[indice] : '';
-        
-        const nome = getValor(colunas.nome) || 'Corrida';
-        const data = formatarData(getValor(colunas.data));
-        const horario = getValor(colunas.horario);
-        const distancia = getValor(colunas.distancia);
-        const local = getValor(colunas.local);
-        const link = formatarLink(getValor(colunas.link));
-
-        // Construir card do evento
-        let eventoHTML = `
-          <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition fade-in">
-            <h4 class="font-bold text-lg text-blue-600">${nome}</h4>
-            <div class="flex items-center mt-1 text-gray-600">
-              <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-              </svg>
-              ${data}${horario ? ' • ' + horario : ''}
-            </div>`;
-
-        // Adicionar distância se existir
-        if (distancia) {
-          eventoHTML += `
-            <div class="mt-2 flex items-center text-gray-600">
-              <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-              </svg>
-              ${distancia}
-            </div>`;
-        }
-
-        // Adicionar local se existir
-        if (local) {
-          eventoHTML += `
-            <div class="mt-2 flex items-center text-gray-600">
-              <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
-              </svg>
-              ${local}
-            </div>`;
-        }
-
-        // Adicionar link se existir
-        if (link) {
-          eventoHTML += `
-            <div class="mt-3">
-              <a href="${link}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center text-green-600 hover:text-green-700 font-medium">
-                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
-                </svg>
-                Mais informações
-              </a>
-            </div>`;
-        }
-
-        eventoHTML += `</div>`;
-        eventosHTML.push(eventoHTML);
+      // Adicionar local se existir
+      if (local) {
+        eventoHTML += `
+          <div class="mt-2 flex items-center text-gray-600">
+            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+            ${local}
+          </div>`;
       }
 
+      // Adicionar link se existir
+      if (link) {
+        eventoHTML += `
+          <div class="mt-3">
+            <a href="${link}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center text-green-600 hover:text-green-700 font-medium">
+              <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+              </svg>
+              Mais informações
+            </a>
+          </div>`;
+      }
+
+      eventoHTML += `</div>`;
+      eventosHTML.push(eventoHTML);
+    }
+
+    if (eventosHTML.length === 0) {
+      container.innerHTML = '<p class="text-gray-500 text-center py-8">Nenhum evento válido encontrado na planilha.</p>';
+    } else {
       container.innerHTML = eventosHTML.join('');
-      eventosCarregados = true;
+    }
+    
+    eventosCarregados = true;
 
-    } catch (error) {
-      console.error('Erro ao carregar eventos:', error);
-      container.innerHTML = `
-        <div class="text-center py-8">
-          <p class="text-red-500 font-medium">Erro ao carregar eventos. Por favor, tente novamente.</p>
-          <button onclick="carregarEventos()" class="mt-4 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">
-            Tentar novamente
-          </button>
-        </div>
-      `;
-    }
+  } catch (error) {
+    console.error('Erro ao carregar eventos:', error);
+    container.innerHTML = `
+      <div class="text-center py-8">
+        <p class="text-red-500 font-medium">Erro ao carregar eventos: ${error.message}</p>
+        <button onclick="carregarEventos()" class="mt-4 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition">
+          Tentar novamente
+        </button>
+        <p class="mt-4 text-sm text-gray-500">Se o problema persistir, entre em contato com o suporte.</p>
+      </div>
+    `;
   }
+}
 
-  // Funções auxiliares para formatação
-  function formatarData(dataString) {
-    if (!dataString) return '';
-    try {
-      const partes = dataString.split('/');
-      if (partes.length === 3) {
-        const data = new Date(partes[2], partes[1] - 1, partes[0]);
-        return data.toLocaleDateString('pt-BR');
-      }
-      return dataString;
-    } catch {
-      return dataString;
+// Funções auxiliares para formatação
+function formatarData(dataString) {
+  if (!dataString) return '';
+  try {
+    const partes = dataString.split('/');
+    if (partes.length === 3) {
+      const data = new Date(partes[2], partes[1] - 1, partes[0]);
+      return data.toLocaleDateString('pt-BR');
     }
+    return dataString;
+  } catch {
+    return dataString;
   }
+}
 
-  function formatarLink(link) {
-    if (!link) return '';
-    
-    link = link.trim().replace(/^"(.*)"$/, '$1');
-    
-    // Verifica se é um link válido
-    if (!link.includes('.') || link.includes('treinorun.com.br/21')) {
-      return '';
-    }
-    
-    // Garante que começa com http:// ou https://
-    if (!link.startsWith('http')) {
-      link = 'https://' + link;
-    }
-    
-    return link;
+function formatarLink(link) {
+  if (!link) return '';
+  
+  link = link.trim().replace(/^"(.*)"$/, '$1');
+  
+  // Verificar se é um link válido
+  if (!link.includes('.') || 
+      link.includes('treinorun.com.br/21') || 
+      link.trim() === '') {
+    return '';
   }
+  
+  // Garantir que começa com http:// ou https://
+  if (!link.startsWith('http')) {
+    link = 'https://' + link;
+  }
+  
+  return link;
+}
 
   // Função para avançar etapas (passos) do formulário
   function nextStep(formPrefix, currentStep, nextStepNumber) {
