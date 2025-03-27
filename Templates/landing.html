@@ -71,7 +71,7 @@
     </div>
   </div>
 
-  <!-- Modal Calendário de Corridas - Versão Corrigida -->
+  <!-- Modal Calendário de Corridas -->
   <div id="calendarioModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
     <div class="bg-white p-6 rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
       <div class="flex justify-between items-center mb-4">
@@ -365,19 +365,13 @@
     sideMenu.addEventListener('click', function(e) {
       e.stopPropagation();
     });
-
-    // Carrega eventos se o modal estiver aberto ao carregar
-    if (document.getElementById('calendarioModal').classList.contains('hidden') === false) {
-      abrirCalendario();
-    }
   });
-// Variáveis de controle
-<script>
-  // Variáveis de controle
+
+  // Variáveis de controle do modal de calendário
   let modalCalendarioAberto = false;
   let eventosCarregados = false;
 
-  // Funções do modal
+  // Funções do modal de calendário
   function abrirCalendario() {
     const modal = document.getElementById('calendarioModal');
     modal.classList.remove('hidden');
@@ -393,7 +387,7 @@
     modalCalendarioAberto = false;
   }
 
-  // Função para carregar eventos - VERSÃO CORRIGIDA
+  // Função para carregar eventos do calendário - VERSÃO SIMPLIFICADA E FUNCIONAL
   async function carregarEventos() {
     const container = document.getElementById("eventosContainer");
     const url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT0D_0-jPKozi4rAtDbWL0PcLJIYYtio6B1Z3phIxTKWGcvr9G60EP_AwhzvYLYvyPhdogFOAEXQ80R/pub?output=csv";
@@ -402,14 +396,11 @@
       // Mostrar loader
       container.innerHTML = '<div class="flex justify-center py-8"><div class="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-green-600"></div></div>';
 
-      // Usando CORS Proxy para evitar problemas
-      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-      const response = await fetch(proxyUrl);
-      
+      // Fazendo a requisição diretamente (pode precisar de um proxy em produção)
+      const response = await fetch(url);
       if (!response.ok) throw new Error('Erro ao carregar dados');
       
-      const data = await response.json();
-      const csvData = data.contents;
+      const csvData = await response.text();
       
       if (!csvData) throw new Error('Dados vazios');
       
@@ -438,10 +429,9 @@
       
       for (let i = 1; i < linhas.length; i++) {
         // Processar linha considerando valores entre aspas
-        const valores = linhas[i].match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || [];
-        const valoresLimpos = valores.map(v => v.trim().replace(/^"(.*)"$/, '$1'));
+        const valores = linhas[i].split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/).map(v => v.trim().replace(/^"(.*)"$/, '$1'));
         
-        const getValor = (indice) => indice >= 0 && indice < valoresLimpos.length ? valoresLimpos[indice] : '';
+        const getValor = (indice) => indice >= 0 && indice < valores.length ? valores[indice] : '';
         
         const nome = getValor(colunas.nome) || 'Corrida';
         const data = formatarData(getValor(colunas.data));
