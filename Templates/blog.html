@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Dicas e artigos sobre corrida e melhoria de pace">
   <script src="https://cdn.tailwindcss.com"></script>
   <title>Blog | Transforme sua Corrida</title>
-  <!-- Manter o mesmo style da página principal -->
   <style>
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(20px); }
@@ -25,13 +25,13 @@
 </head>
 <body class="bg-gray-50 text-gray-900">
   
-  <!-- Menu Lateral (igual ao principal) -->
+  <!-- Menu Lateral Corrigido -->
   <div class="fixed left-0 top-0 z-50">
-    <button id="menuButton" class="m-4 p-2 rounded-lg bg-white shadow-lg">
+    <div id="menuButton" class="m-4 p-2 rounded-lg bg-white shadow-lg cursor-pointer">
       <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-gray-800" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
       </svg>
-    </button>
+    </div>
     
     <div id="sideMenu" class="fixed left-0 top-0 h-full w-64 bg-white shadow-xl transform -translate-x-full transition-transform duration-300 z-40">
       <div class="p-4 border-b border-gray-200">
@@ -40,16 +40,16 @@
       <nav class="p-4">
         <ul class="space-y-3">
           <li><a href="/" class="block py-2 px-4 rounded hover:bg-gray-100">Home</a></li>
-          <li><a href="#formularios" class="block py-2 px-4 rounded hover:bg-gray-100">Criar Treino</a></li>
+          <li><a href="/#formularios" class="block py-2 px-4 rounded hover:bg-gray-100">Criar Treino</a></li>
           <li><a href="/blog" class="block py-2 px-4 rounded bg-green-50 text-green-600 font-medium">Blog</a></li>
           <li><button onclick="mostrarCalendario()" class="w-full text-left py-2 px-4 rounded hover:bg-gray-100">Calendário de Corridas</button></li>
-          <li><a href="#duvidas" class="block py-2 px-4 rounded hover:bg-gray-100">Tire Dúvidas</a></li>
+          <li><a href="/#duvidas" class="block py-2 px-4 rounded hover:bg-gray-100">Tire Dúvidas</a></li>
         </ul>
       </nav>
     </div>
   </div>
 
-  <!-- Hero Section (estilo igual ao principal) -->
+  <!-- Hero Section -->
   <header class="bg-gradient-to-r from-green-500 to-blue-500 text-white py-16 text-center fade-in">
     <h1 class="text-5xl font-bold">Dicas para Transformar sua Corrida</h1>
     <p class="mt-4 text-lg">Artigos e guias para melhorar seu pace e performance</p>
@@ -157,39 +157,77 @@
     </div>
   </section>
 
-  <!-- Rodapé (igual ao principal) -->
+  <!-- Rodapé -->
   <footer class="bg-gradient-to-r from-green-500 to-blue-500 text-white py-8 text-center">
     <p class="text-lg">© 2025 Transforme sua Corrida. Todos os direitos reservados.</p>
   </footer>
 
-  <!-- Modal Calendário (igual ao principal) -->
+  <!-- Modal Calendário -->
   <div id="calendarioModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
-    <!-- ... conteúdo do modal calendário ... -->
+    <div class="bg-white p-6 rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="text-2xl font-bold text-green-600">Calendário de Corridas</h3>
+        <button onclick="fecharCalendario()" class="text-gray-500 hover:text-gray-700">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- Evento 1 -->
+        <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
+          <h4 class="font-bold text-lg text-blue-600">Corrida da Cidade</h4>
+          <p class="text-gray-600 mt-1">10/03/2025 - 08:00</p>
+          <p class="mt-2">5km e 10km - Parque Central</p>
+          <a href="#" class="inline-block mt-3 text-green-600 hover:text-green-700 font-medium">Mais informações</a>
+        </div>
+        
+        <!-- Evento 2 -->
+        <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
+          <h4 class="font-bold text-lg text-blue-600">Meia Maratona do Litoral</h4>
+          <p class="text-gray-600 mt-1">24/03/2025 - 07:30</p>
+          <p class="mt-2">21km - Orla da Praia</p>
+          <a href="#" class="inline-block mt-3 text-green-600 hover:text-green-700 font-medium">Mais informações</a>
+        </div>
+      </div>
+    </div>
   </div>
 
-  <script>
-    // Controle do menu lateral (igual ao principal)
+<script>
+  // Controle do menu lateral corrigido
+  document.addEventListener('DOMContentLoaded', function() {
     const menuButton = document.getElementById('menuButton');
     const sideMenu = document.getElementById('sideMenu');
     
-    menuButton.addEventListener('click', () => {
+    // Abre/fecha o menu ao clicar em qualquer área do botão
+    menuButton.addEventListener('click', function(e) {
+      e.stopPropagation();
       sideMenu.classList.toggle('-translate-x-full');
     });
     
-    document.addEventListener('click', (e) => {
-      if (!sideMenu.contains(e.target) && e.target !== menuButton) {
+    // Fecha o menu ao clicar fora
+    document.addEventListener('click', function(e) {
+      if (!sideMenu.contains(e.target) && !menuButton.contains(e.target)) {
         sideMenu.classList.add('-translate-x-full');
       }
     });
-
-    function mostrarCalendario() {
-      document.getElementById('calendarioModal').classList.remove('hidden');
-      document.getElementById('sideMenu').classList.add('-translate-x-full');
-    }
     
-    function fecharCalendario() {
-      document.getElementById('calendarioModal').classList.add('hidden');
-    }
-  </script>
+    // Impede que o clique no menu feche o próprio menu
+    sideMenu.addEventListener('click', function(e) {
+      e.stopPropagation();
+    });
+  });
+
+  // Funções do calendário
+  function mostrarCalendario() {
+    document.getElementById('calendarioModal').classList.remove('hidden');
+    document.getElementById('sideMenu').classList.add('-translate-x-full');
+  }
+  
+  function fecharCalendario() {
+    document.getElementById('calendarioModal').classList.add('hidden');
+  }
+</script>
 </body>
 </html>
