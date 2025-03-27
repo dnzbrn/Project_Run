@@ -344,93 +344,61 @@
 </div>
 
 <script>
-  // Funções para abrir e fechar o modal
+  // Funções básicas para controlar o modal
   function abrirCalendario() {
-    document.getElementById('calendarioModal').classList.remove('hidden');
-    carregarEventos(); // Recarrega os eventos sempre que abrir o modal
+    document.getElementById('calendarioModal').style.display = 'flex';
+    carregarEventos();
   }
 
   function fecharCalendario() {
-    document.getElementById('calendarioModal').classList.add('hidden');
+    document.getElementById('calendarioModal').style.display = 'none';
   }
 
-  // Função para processar corretamente o CSV
-  function parseCSV(text) {
-    const linhas = text.split('\n');
-    const resultados = [];
-    const headers = linhas[0].split(',').map(h => h.trim());
-    
-    for (let i = 1; i < linhas.length; i++) {
-      const valores = linhas[i].match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || [];
-      const obj = {};
-      
-      for (let j = 0; j < headers.length; j++) {
-        let valor = valores[j] ? valores[j].trim() : '';
-        // Remove aspas extras se existirem
-        if (valor.startsWith('"') && valor.endsWith('"')) {
-          valor = valor.slice(1, -1);
-        }
-        obj[headers[j]] = valor;
-      }
-      
-      resultados.push(obj);
-    }
-    
-    return resultados;
-  }
-
+  // Função principal para carregar eventos
   async function carregarEventos() {
-    const url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT0D_0-jPKozi4rAtDbWL0PcLJIYYtio6B1Z3phIxTKWGcvr9G60EP_AwhzvYLYvyPhdogFOAEXQ80R/pub?output=csv";
     const container = document.getElementById("eventosContainer");
-
-    container.innerHTML = "<p class='text-gray-500'>Carregando eventos...</p>";
-
+    const csvUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT0D_0-jPKozi4rAtDbWL0PcLJIYYtio6B1Z3phIxTKWGcvr9G60EP_AwhzvYLYvyPhdogFOAEXQ80R/pub?output=csv";
+    
     try {
-      const resposta = await fetch(url);
-      const texto = await resposta.text();
-      const eventos = parseCSV(texto);
-
-      if (eventos.length === 0) {
-        container.innerHTML = "<p class='text-gray-500'>Nenhum evento encontrado.</p>";
-        return;
-      }
-
-      container.innerHTML = ""; // Limpa o container
-
-      eventos.forEach(evento => {
-        // Garante que temos os campos mínimos necessários
-        if (!evento.nome || !evento.data) return;
-
-        // Processa o link corretamente
-        let linkInfo = '';
-        if (evento.link && evento.link.trim() !== '') {
-          let linkUrl = evento.link.trim();
-          // Adiciona https:// se não tiver protocolo
-          if (!linkUrl.startsWith('http://') && !linkUrl.startsWith('https://')) {
-            linkUrl = 'https://' + linkUrl;
-          }
-          linkInfo = `<a href="${linkUrl}" target="_blank" rel="noopener noreferrer" class="inline-block mt-3 text-green-600 hover:text-green-700 font-medium">Mais informações</a>`;
+      const response = await fetch(csvUrl);
+      const csvData = await response.text();
+      
+      // Processa o CSV manualmente (versão simplificada)
+      const linhas = csvData.split('\n').slice(1); // Remove cabeçalho
+      container.innerHTML = ''; // Limpa o container
+      
+      linhas.forEach(linha => {
+        // Versão simples de parsing - assume que não há vírgulas nos valores
+        const [nome, data, horario, distancia, local, link] = linha.split(',').map(item => item.trim());
+        
+        if (!nome) return; // Ignora linhas vazias
+        
+        // Corrige o link se necessário
+        let linkCorrigido = link;
+        if (link && !link.startsWith('http') && link.includes('.')) {
+          linkCorrigido = 'https://' + link.replace(/^https?:\/\//, '');
         }
-
+        
         const eventoHTML = `
           <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
-            <h4 class="font-bold text-lg text-blue-600">${evento.nome || 'Evento sem nome'}</h4>
-            <p class="text-gray-600 mt-1">${evento.data || 'Data não informada'} ${evento.horario ? '- ' + evento.horario : ''}</p>
-            <p class="mt-2">${evento.distancia || ''} ${evento.local ? '- ' + evento.local : ''}</p>
-            ${linkInfo}
+            <h4 class="font-bold text-lg text-blue-600">${nome}</h4>
+            <p class="text-gray-600 mt-1">${data} ${horario ? ' - ' + horario : ''}</p>
+            <p class="mt-2">${distancia || ''} ${local ? ' - ' + local : ''}</p>
+            ${linkCorrigido ? `<a href="${linkCorrigido}" target="_blank" class="inline-block mt-3 text-green-600 hover:text-green-700 font-medium">Mais informações</a>` : ''}
           </div>
         `;
+        
         container.innerHTML += eventoHTML;
       });
-
+      
     } catch (error) {
-      container.innerHTML = "<p class='text-red-500'>Erro ao carregar eventos. Por favor, tente novamente mais tarde.</p>";
-      console.error("Erro ao buscar eventos:", error);
+      container.innerHTML = '<p class="text-red-500">Erro ao carregar eventos. Tente novamente.</p>';
+      console.error('Erro:', error);
     }
   }
 
   // Carrega os eventos quando a página é carregada
-  document.addEventListener("DOMContentLoaded", carregarEventos);
+  document.addEventListener('DOMContentLoaded', carregarEventos);
 </script>
 
 <script>
