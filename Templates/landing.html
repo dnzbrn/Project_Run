@@ -71,7 +71,7 @@
     </div>
   </div>
 
- <!-- Modal Calendário de Corridas -->
+<!-- Modal Calendário de Corridas -->
 <div id="calendarioModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
   <div class="bg-white p-6 rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
     <div class="flex justify-between items-center mb-4">
@@ -84,181 +84,184 @@
     </div>
     
     <div id="eventosContainer" class="grid grid-cols-1 md:grid-cols-2 gap-6">
-      <p class='text-gray-500'>Carregando eventos...</p>
+      <div class="flex justify-center py-8">
+        <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-green-600"></div>
+      </div>
     </div>
   </div>
 </div>
 
-<script>
-  // Variável para controle do modal
-  let modalCalendarioAberto = false;
+// Variáveis de controle
+let modalCalendarioAberto = false;
+let eventosCarregados = false;
 
-  // Função para abrir o modal
-  function abrirCalendario() {
-    const modal = document.getElementById('calendarioModal');
-    modal.classList.remove('hidden');
-    modalCalendarioAberto = true;
+// Funções de controle do modal
+function abrirCalendario() {
+  const modal = document.getElementById('calendarioModal');
+  modal.classList.remove('hidden');
+  modalCalendarioAberto = true;
+  
+  if (!eventosCarregados) {
     carregarEventos();
-    
-    // Fecha o menu lateral se estiver aberto
-    document.getElementById('sideMenu').classList.add('-translate-x-full');
   }
+  
+  // Fecha o menu lateral se estiver aberto
+  document.getElementById('sideMenu').classList.add('-translate-x-full');
+}
 
-  // Função para fechar o modal
-  function fecharCalendario() {
-    document.getElementById('calendarioModal').classList.add('hidden');
-    modalCalendarioAberto = false;
-  }
+function fecharCalendario() {
+  document.getElementById('calendarioModal').classList.add('hidden');
+  modalCalendarioAberto = false;
+}
 
-  // Função principal para carregar os eventos
-  async function carregarEventos() {
-    if (!modalCalendarioAberto) return;
+// Função principal para carregar eventos
+async function carregarEventos() {
+  if (!modalCalendarioAberto) return;
+
+  const container = document.getElementById("eventosContainer");
+  const csvUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT0D_0-jPKozi4rAtDbWL0PcLJIYYtio6B1Z3phIxTKWGcvr9G60EP_AwhzvYLYvyPhdogFOAEXQ80R/pub?output=csv";
+
+  try {
+    // Mostra o loading
+    container.innerHTML = '<div class="flex justify-center py-8"><div class="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-green-600"></div></div>';
+
+    const response = await fetch(csvUrl);
+    if (!response.ok) throw new Error('Falha ao carregar a planilha');
     
-    const container = document.getElementById("eventosContainer");
-    const csvUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT0D_0-jPKozi4rAtDbWL0PcLJIYYtio6B1Z3phIxTKWGcvr9G60EP_AwhzvYLYvyPhdogFOAEXQ80R/pub?output=csv";
+    const csvData = await response.text();
+    const linhas = csvData.split('\n').filter(linha => linha.trim() !== '');
     
-    try {
-      container.innerHTML = "<div class='flex justify-center'><div class='animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-green-600'></div></div>";
-      
-      const response = await fetch(csvUrl);
-      if (!response.ok) throw new Error('Falha ao carregar a planilha');
-      
-      const csvData = await response.text();
-      const linhas = csvData.split('\n').filter(linha => linha.trim() !== '');
-      
-      if (linhas.length < 2) {
-        container.innerHTML = "<p class='text-gray-500 text-center py-8'>Nenhum evento encontrado.</p>";
-        return;
-      }
-      
-      // Processa os cabeçalhos
-      const cabecalhos = linhas[0].split(',').map(h => h.trim().toLowerCase());
-      const indices = {
-        nome: cabecalhos.findIndex(h => h.includes('nome')),
-        data: cabecalhos.findIndex(h => h.includes('data')),
-        horario: cabecalhos.findIndex(h => h.includes('hora') || h.includes('horário')),
-        distancia: cabecalhos.findIndex(h => h.includes('distância') || h.includes('distancia')),
-        local: cabecalhos.findIndex(h => h.includes('local')),
-        link: cabecalhos.findIndex(h => h.includes('link'))
-      };
-      
-      container.innerHTML = "";
-      let eventosHTML = [];
+    if (linhas.length < 2) {
+      container.innerHTML = '<p class="text-gray-500 text-center py-8">Nenhum evento encontrado.</p>';
+      return;
+    }
 
-      for (let i = 1; i < linhas.length; i++) {
-        // Processa a linha considerando que pode haver vírgulas dentro dos valores
-        const valores = linhas[i].match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || [];
-        const valoresLimpos = valores.map(v => v.trim().replace(/^"(.*)"$/, '$1'));
-        
-        // Extrai os valores usando os índices
-        const getValor = (campo) => indices[campo] >= 0 ? (valoresLimpos[indices[campo]] || '').trim() : '';
-        
-        const nome = getValor('nome') || 'Evento de Corrida';
-        const data = formatarData(getValor('data'));
-        const horario = getValor('horario');
-        const distancia = getValor('distancia');
-        const local = getValor('local');
-        let link = getValor('link');
+    // Processa os cabeçalhos
+    const cabecalhos = linhas[0].split(',').map(h => h.trim().toLowerCase());
+    
+    // Mapeia os índices das colunas
+    const colunas = {
+      nome: cabecalhos.indexOf('nome'),
+      data: cabecalhos.indexOf('data'),
+      horario: cabecalhos.indexOf('horario'),
+      distancia: cabecalhos.indexOf('distancia'),
+      local: cabecalhos.indexOf('local'),
+      link: cabecalhos.indexOf('link')
+    };
 
-        // Formata o link corretamente
-        link = formatarLink(link);
+    // Verifica se encontrou as colunas necessárias
+    if (colunas.nome === -1 || colunas.data === -1) {
+      throw new Error('Estrutura da planilha inválida');
+    }
 
-        const eventoHTML = `
-          <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
-            <h4 class="font-bold text-lg text-blue-600">${nome}</h4>
-            <div class="flex items-center mt-1 text-gray-600">
-              <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-              </svg>
-              ${data} ${horario ? '• ' + horario : ''}
-            </div>
-            <div class="mt-2 flex items-center">
-              <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
-              </svg>
-              ${distancia} ${local ? '• ' + local : ''}
-            </div>
-            ${link ? `
-              <a href="${link}" target="_blank" rel="noopener noreferrer" 
-                 class="mt-3 inline-flex items-center text-green-600 hover:text-green-700 font-medium">
-                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path>
-                </svg>
-                Mais informações
-              </a>
-            ` : ''}
+    container.innerHTML = '';
+    const eventosHTML = [];
+
+    for (let i = 1; i < linhas.length; i++) {
+      // Processa cada linha do CSV
+      const valores = linhas[i].split(',').map(v => v.trim().replace(/^"(.*)"$/, '$1'));
+      
+      // Extrai os valores garantindo que não ultrapasse o tamanho do array
+      const getValor = (indice) => indice >= 0 && indice < valores.length ? valores[indice] : '';
+      
+      const nome = getValor(colunas.nome) || 'Corrida';
+      const data = formatarData(getValor(colunas.data));
+      const horario = getValor(colunas.horario);
+      const distancia = getValor(colunas.distancia);
+      const local = getValor(colunas.local);
+      const link = formatarLink(getValor(colunas.link));
+
+      // Cria o HTML do evento
+      eventosHTML.push(`
+        <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
+          <h4 class="font-bold text-lg text-blue-600">${nome}</h4>
+          <div class="flex items-center mt-1 text-gray-600">
+            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+            </svg>
+            ${data} ${horario ? '• ' + horario : ''}
           </div>
-        `;
-        eventosHTML.push(eventoHTML);
-      }
-      
-      container.innerHTML = eventosHTML.join('');
-
-    } catch (error) {
-      console.error('Erro ao carregar eventos:', error);
-      container.innerHTML = `
-        <div class="col-span-2 text-center py-8">
-          <p class="text-red-500 font-medium">Erro ao carregar eventos.</p>
-          <button onclick="carregarEventos()" class="mt-4 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">
-            Tentar novamente
-          </button>
+          <div class="mt-2 flex items-center">
+            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+            </svg>
+            ${distancia} ${local ? '• ' + local : ''}
+          </div>
+          ${link ? `
+            <a href="${link}" target="_blank" rel="noopener noreferrer" 
+               class="mt-3 inline-flex items-center text-green-600 hover:text-green-700 font-medium">
+              <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path>
+              </svg>
+              Mais informações
+            </a>
+          ` : ''}
         </div>
-      `;
+      `);
+    }
+
+    container.innerHTML = eventosHTML.join('');
+    eventosCarregados = true;
+
+  } catch (error) {
+    console.error('Erro ao carregar eventos:', error);
+    container.innerHTML = `
+      <div class="col-span-2 text-center py-8">
+        <p class="text-red-500 font-medium">Erro ao carregar eventos. Por favor, tente novamente.</p>
+        <button onclick="carregarEventos()" class="mt-4 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">
+          Tentar novamente
+        </button>
+      </div>
+    `;
+  }
+}
+
+// Funções auxiliares
+function formatarData(dataString) {
+  if (!dataString) return '';
+  
+  try {
+    // Tenta converter para formato de data
+    const partes = dataString.split('/');
+    if (partes.length === 3) {
+      const data = new Date(partes[2], partes[1] - 1, partes[0]);
+      return data.toLocaleDateString('pt-BR');
+    }
+    return dataString;
+  } catch {
+    return dataString;
+  }
+}
+
+function formatarLink(link) {
+  if (!link) return '';
+  
+  // Remove quebras de linha e espaços extras
+  link = link.replace(/\r?\n|\r/g, '').trim();
+  
+  // Remove aspas extras se houver
+  link = link.replace(/^"(.*)"$/, '$1');
+  
+  // Garante que começa com http:// ou https://
+  if (!link.startsWith('http')) {
+    if (link.startsWith('www.')) {
+      link = 'https://' + link;
+    }
+    else if (link.includes('.')) {
+      link = 'https://' + link;
     }
   }
+  
+  return link;
+}
 
-  // Função para formatar datas
-  function formatarData(dataString) {
-    if (!dataString) return '';
-    
-    try {
-      // Tenta converter para formato de data (pode ser ajustado conforme o formato na planilha)
-      const data = new Date(dataString);
-      if (isNaN(data)) return dataString; // Retorna original se não for uma data válida
-      
-      return data.toLocaleDateString('pt-BR', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric'
-      });
-    } catch {
-      return dataString;
-    }
-  }
-
-  // Função para formatar links
-  function formatarLink(link) {
-    if (!link) return '';
-    
-    // Remove quebras de linha e espaços extras
-    link = link.replace(/\r?\n|\r/g, '').trim();
-    
-    // Remove aspas extras se houver
-    link = link.replace(/^"(.*)"$/, '$1');
-    
-    // Garante que começa com http:// ou https://
-    if (!link.startsWith('http')) {
-      // Se começa com www., adiciona https://
-      if (link.startsWith('www.')) {
-        link = 'https://' + link;
-      }
-      // Caso contrário, assume que é um caminho relativo ao domínio principal
-      else if (link.includes('.')) {
-        link = 'https://' + link;
-      }
-    }
-    
-    return link;
-  }
-
-  // Adiciona evento de clique para abrir o calendário
-  document.addEventListener('DOMContentLoaded', () => {
-    document.querySelectorAll('[data-abrir-calendario]').forEach(btn => {
-      btn.addEventListener('click', abrirCalendario);
-    });
+// Adiciona evento de clique para abrir o calendário
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('[data-abrir-calendario]').forEach(btn => {
+    btn.addEventListener('click', abrirCalendario);
   });
-</script>
+})
 
   <!-- Seção Hero -->
   <header class="bg-gradient-to-r from-green-500 to-blue-500 text-white py-16 text-center fade-in">
