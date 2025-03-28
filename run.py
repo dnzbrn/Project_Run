@@ -340,7 +340,7 @@ def resultado():
 
 @app.route('/artigos/melhorar-pace')
 def artigo_pace():
-    return render_template('artigos/melhorar-pace.html')
+    return render_template('artigos/artigo-melhorar-pace.html')
 
 # ================================================
 # ROTAS DE GERAÇÃO DE PLANOS
