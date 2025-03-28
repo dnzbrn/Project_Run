@@ -4,8 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="Dicas e artigos especializados sobre corrida, melhoria de pace e treinamento personalizado">
+  <meta name="keywords" content="corrida, pace, treino corrida, dicas corrida, melhorar performance, tênis corrida, alimentação corredor">
+  <link rel="canonical" href="https://www.treinorun.com.br/blog">
   <script src="https://cdn.tailwindcss.com"></script>
-  <title>Blog | Transforme sua Corrida - Dicas Especializadas</title>
+  <title>Blog | Transforme sua Corrida - Dicas Especializadas para Corredores</title>
   <style>
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(20px); }
@@ -20,20 +22,6 @@
     .card-hover:hover {
       transform: translateY(-5px);
       box-shadow: 0 10px 20px rgba(0, 0, 0, 0.15);
-    }
-    .progress-bar {
-      height: 8px;
-      background: #e2e8f0;
-      border-radius: 4px;
-      overflow: hidden;
-    }
-    .progress-bar-fill {
-      height: 100%;
-      background: #10b981;
-      transition: width 0.3s ease;
-    }
-    #calendarioModal {
-      transition: opacity 0.3s ease;
     }
     .prose {
       max-width: 65ch;
@@ -57,11 +45,14 @@
       margin-top: 0.5rem;
       margin-bottom: 1rem;
     }
+    html {
+      scroll-behavior: smooth;
+    }
   </style>
 </head>
 <body class="bg-gray-50 text-gray-900">
   
-  <!-- Menu Lateral Atualizado -->
+  <!-- Menu Lateral -->
   <div class="fixed left-0 top-0 z-50">
     <div id="menuButton" class="m-4 p-2 rounded-lg bg-white shadow-lg cursor-pointer">
       <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-gray-800" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -98,18 +89,22 @@
     <div class="container mx-auto px-4">
       <h2 class="text-3xl md:text-4xl font-bold text-green-700 text-center mb-12">Artigos Recentes</h2>
       
-      <!-- Post 1: Como Reduzir Seu Pace -->
+      <!-- Destaque Principal -->
       <div class="max-w-4xl mx-auto bg-gray-100 rounded-xl overflow-hidden shadow-lg card-hover mb-16">
         <div class="md:flex">
           <div class="md:flex-shrink-0 md:w-1/2">
-            <img class="h-full w-full object-cover" src="https://images.unsplash.com/photo-1552674605-db6ffd4facb5?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80" alt="Corredor melhorando pace em treino" loading="lazy">
+            <a href="/artigos/melhorar-pace">
+              <img class="h-full w-full object-cover" src="https://images.unsplash.com/photo-1552674605-db6ffd4facb5?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80" alt="Corredor melhorando pace em treino" loading="lazy">
+            </a>
           </div>
           <div class="p-8">
             <div class="flex flex-wrap gap-2 mb-3">
               <span class="bg-green-100 text-green-800 text-xs font-semibold px-2.5 py-0.5 rounded">Performance</span>
               <span class="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-0.5 rounded">Treinamento</span>
             </div>
-            <h1 class="text-2xl font-bold mb-3">Como Reduzir Seu Pace em 2 Minutos por Km em 8 Semanas</h1>
+            <a href="/artigos/melhorar-pace" class="hover:no-underline">
+              <h1 class="text-2xl font-bold mb-3 hover:text-green-600">Como Reduzir Seu Pace em 2 Minutos por Km em 8 Semanas</h1>
+            </a>
             <p class="text-gray-600 mb-4">Método comprovado que já ajudou mais de 500 corredores a melhorarem seus tempos significativamente.</p>
             
             <div class="flex items-center mt-6">
@@ -129,7 +124,7 @@
             </div>
             
             <div class="mt-6">
-              <a href="#" class="inline-flex items-center bg-green-600 text-white font-bold py-2 px-6 rounded-lg shadow-lg hover:bg-green-700 transition">
+              <a href="/artigos/melhorar-pace" class="inline-flex items-center bg-green-600 text-white font-bold py-2 px-6 rounded-lg shadow-lg hover:bg-green-700 transition">
                 Ler Artigo Completo
                 <svg xmlns="http://www.w3.org/2000/svg" class="ml-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
@@ -144,51 +139,87 @@
       <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
         <!-- Artigo 1 -->
         <div class="bg-gray-100 rounded-lg overflow-hidden shadow-md card-hover">
-          <img class="w-full h-48 object-cover" src="https://images.unsplash.com/photo-1517649763962-0c623066013b?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80" alt="Tênis de corrida" loading="lazy">
+          <a href="/artigos/tenis-corrida">
+            <img class="w-full h-48 object-cover" src="https://images.unsplash.com/photo-1517649763962-0c623066013b?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80" alt="Tênis de corrida" loading="lazy">
+          </a>
           <div class="p-6">
             <div class="flex flex-wrap gap-2 mb-3">
               <span class="bg-green-100 text-green-800 text-xs font-semibold px-2.5 py-0.5 rounded">Iniciantes</span>
               <span class="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-0.5 rounded">Equipamentos</span>
             </div>
-            <h2 class="text-xl font-bold mb-2"><a href="#" class="hover:text-green-600">Tênis de Corrida Ideal: Como Escolher o Melhor para Seu Tipo de Pisada</a></h2>
+            <a href="/artigos/tenis-corrida" class="hover:no-underline">
+              <h2 class="text-xl font-bold mb-2 hover:text-green-600">Tênis de Corrida Ideal: Como Escolher o Melhor para Seu Tipo de Pisada</h2>
+            </a>
             <p class="text-gray-600 mb-4">Guia completo para selecionar o calçado perfeito e evitar lesões.</p>
             <div class="flex justify-between items-center text-sm text-gray-500">
               <span>12 Mar 2025</span>
               <span>6 min</span>
+            </div>
+            <div class="mt-4">
+              <a href="/artigos/tenis-corrida" class="text-green-600 hover:text-green-700 font-medium inline-flex items-center">
+                Ler artigo completo
+                <svg xmlns="http://www.w3.org/2000/svg" class="ml-1 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                </svg>
+              </a>
             </div>
           </div>
         </div>
 
         <!-- Artigo 2 -->
         <div class="bg-gray-100 rounded-lg overflow-hidden shadow-md card-hover">
-          <img class="w-full h-48 object-cover" src="https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80" alt="Alongamento" loading="lazy">
+          <a href="/artigos/alongamento">
+            <img class="w-full h-48 object-cover" src="https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80" alt="Alongamento" loading="lazy">
+          </a>
           <div class="p-6">
             <div class="flex flex-wrap gap-2 mb-3">
               <span class="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-0.5 rounded">Prevenção</span>
               <span class="bg-purple-100 text-purple-800 text-xs font-semibold px-2.5 py-0.5 rounded">Saúde</span>
             </div>
-            <h2 class="text-xl font-bold mb-2"><a href="#" class="hover:text-green-600">Rotina de Alongamento Pós-Corrida: Os 8 Exercícios Essenciais</a></h2>
+            <a href="/artigos/alongamento" class="hover:no-underline">
+              <h2 class="text-xl font-bold mb-2 hover:text-green-600">Rotina de Alongamento Pós-Corrida: Os 8 Exercícios Essenciais</h2>
+            </a>
             <p class="text-gray-600 mb-4">Evite lesões e melhore sua recuperação com esta sequência comprovada.</p>
             <div class="flex justify-between items-center text-sm text-gray-500">
               <span>5 Mar 2025</span>
               <span>5 min</span>
+            </div>
+            <div class="mt-4">
+              <a href="/artigos/alongamento" class="text-green-600 hover:text-green-700 font-medium inline-flex items-center">
+                Ler artigo completo
+                <svg xmlns="http://www.w3.org/2000/svg" class="ml-1 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                </svg>
+              </a>
             </div>
           </div>
         </div>
 
         <!-- Artigo 3 -->
         <div class="bg-gray-100 rounded-lg overflow-hidden shadow-md card-hover">
-          <img class="w-full h-48 object-cover" src="https://images.unsplash.com/photo-1511988617509-a57c8a288659?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80" alt="Nutrição" loading="lazy">
+          <a href="/artigos/alimentacao">
+            <img class="w-full h-48 object-cover" src="https://images.unsplash.com/photo-1511988617509-a57c8a288659?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80" alt="Nutrição" loading="lazy">
+          </a>
           <div class="p-6">
             <div class="flex flex-wrap gap-2 mb-3">
               <span class="bg-green-100 text-green-800 text-xs font-semibold px-2.5 py-0.5 rounded">Nutrição</span>
               <span class="bg-purple-100 text-purple-800 text-xs font-semibold px-2.5 py-0.5 rounded">Performance</span>
             </div>
-            <h2 class="text-xl font-bold mb-2"><a href="#" class="hover:text-green-600">Alimentação para Corredores: O que Comer Antes, Durante e Depois</a></h2>
+            <a href="/artigos/alimentacao" class="hover:no-underline">
+              <h2 class="text-xl font-bold mb-2 hover:text-green-600">Alimentação para Corredores: O que Comer Antes, Durante e Depois</h2>
+            </a>
             <p class="text-gray-600 mb-4">Maximize sua energia e recuperação com estas estratégias nutricionais.</p>
             <div class="flex justify-between items-center text-sm text-gray-500">
               <span>28 Fev 2025</span>
               <span>7 min</span>
+            </div>
+            <div class="mt-4">
+              <a href="/artigos/alimentacao" class="text-green-600 hover:text-green-700 font-medium inline-flex items-center">
+                Ler artigo completo
+                <svg xmlns="http://www.w3.org/2000/svg" class="ml-1 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                </svg>
+              </a>
             </div>
           </div>
         </div>
@@ -238,7 +269,7 @@
     </div>
   </footer>
 
-  <!-- Modal Calendário - Atualizado para funcionar como no primeiro código -->
+  <!-- Modal Calendário -->
   <div id="calendarioModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
     <div class="bg-white p-6 rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
       <div class="flex justify-between items-center mb-4">
@@ -259,7 +290,7 @@
   </div>
 
 <script>
-  // Controle do menu lateral atualizado
+  // Controle do menu lateral
   document.addEventListener('DOMContentLoaded', function() {
     const menuButton = document.getElementById('menuButton');
     const sideMenu = document.getElementById('sideMenu');
@@ -284,7 +315,7 @@
   let modalCalendarioAberto = false;
   let eventosCarregados = false;
 
-  // Funções do modal de calendário - IGUAL AO PRIMEIRO CÓDIGO
+  // Funções do modal de calendário
   function abrirCalendario() {
     const modal = document.getElementById('calendarioModal');
     modal.classList.remove('hidden');
@@ -300,7 +331,7 @@
     modalCalendarioAberto = false;
   }
 
-  // Função para carregar eventos do calendário - IGUAL AO PRIMEIRO CÓDIGO
+  // Função para carregar eventos do calendário
   async function carregarEventos() {
     const container = document.getElementById("eventosContainer");
     const url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT0D_0-jPKozi4rAtDbWL0PcLJIYYtio6B1Z3phIxTKWGcvr9G60EP_AwhzvYLYvyPhdogFOAEXQ80R/pub?output=csv";
@@ -309,7 +340,7 @@
       // Mostrar loader
       container.innerHTML = '<div class="flex justify-center py-8"><div class="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-green-600"></div></div>';
 
-      // Fazendo a requisição diretamente (pode precisar de um proxy em produção)
+      // Fazendo a requisição diretamente
       const response = await fetch(url);
       if (!response.ok) throw new Error('Erro ao carregar dados');
       
@@ -364,7 +395,6 @@
               ${data}${horario ? ' • ' + horario : ''}
             </div>`;
 
-        // Adicionar distância se existir
         if (distancia) {
           eventoHTML += `
             <div class="mt-2 flex items-center text-gray-600">
@@ -375,7 +405,6 @@
             </div>`;
         }
 
-        // Adicionar local se existir
         if (local) {
           eventoHTML += `
             <div class="mt-2 flex items-center text-gray-600">
@@ -387,7 +416,6 @@
             </div>`;
         }
 
-        // Adicionar link se existir
         if (link) {
           eventoHTML += `
             <div class="mt-3">
@@ -420,7 +448,7 @@
     }
   }
 
-  // Funções auxiliares para formatação - IGUAL AO PRIMEIRO CÓDIGO
+  // Funções auxiliares para formatação
   function formatarData(dataString) {
     if (!dataString) return '';
     try {
@@ -440,12 +468,10 @@
     
     link = link.trim().replace(/^"(.*)"$/, '$1');
     
-    // Verificar se é um link válido
     if (!link.includes('.') || link.trim() === '') {
       return '';
     }
     
-    // Garantir que começa com http:// ou https://
     if (!link.startsWith('http')) {
       link = 'https://' + link;
     }
