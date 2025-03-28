@@ -337,6 +337,11 @@ def resultado():
         </html>
         """, 200
 
+
+@app.route('/artigos/melhorar-pace')
+def artigo_pace():
+    return render_template('artigos/melhorar-pace.html')
+
 # ================================================
 # ROTAS DE GERAÇÃO DE PLANOS
 # ================================================
