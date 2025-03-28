@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Dicas e artigos sobre corrida e melhoria de pace">
+  <meta name="description" content="Dicas e artigos especializados sobre corrida, melhoria de pace e treinamento personalizado">
   <script src="https://cdn.tailwindcss.com"></script>
-  <title>Blog | Transforme sua Corrida</title>
+  <title>Blog | Transforme sua Corrida - Dicas Especializadas</title>
   <style>
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(20px); }
@@ -34,6 +34,28 @@
     }
     #calendarioModal {
       transition: opacity 0.3s ease;
+    }
+    .prose {
+      max-width: 65ch;
+    }
+    .prose h2 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-top: 1.5rem;
+      margin-bottom: 0.75rem;
+      color: #047857;
+    }
+    .prose ul {
+      list-style-type: disc;
+      padding-left: 1.5rem;
+      margin-top: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    .prose ol {
+      list-style-type: decimal;
+      padding-left: 1.5rem;
+      margin-top: 0.5rem;
+      margin-bottom: 1rem;
     }
   </style>
 </head>
@@ -65,34 +87,55 @@
 
   <!-- Hero Section -->
   <header class="bg-gradient-to-r from-green-500 to-blue-500 text-white py-16 text-center fade-in">
-    <h1 class="text-5xl font-bold">Dicas para Transformar sua Corrida</h1>
-    <p class="mt-4 text-lg">Artigos e guias para melhorar seu pace e performance</p>
+    <div class="container mx-auto px-4">
+      <h1 class="text-4xl md:text-5xl font-bold mb-4">Dicas para Transformar sua Corrida</h1>
+      <p class="text-lg md:text-xl max-w-2xl mx-auto">Artigos e guias especializados para melhorar seu pace, performance e resultados</p>
+    </div>
   </header>
 
   <!-- Seção de Artigos -->
   <section class="py-16 bg-white fade-in">
     <div class="container mx-auto px-4">
-      <h2 class="text-4xl font-bold text-green-700 text-center mb-12">Artigos Recentes</h2>
+      <h2 class="text-3xl md:text-4xl font-bold text-green-700 text-center mb-12">Artigos Recentes</h2>
       
-      <!-- Destaque -->
+      <!-- Post 1: Como Reduzir Seu Pace -->
       <div class="max-w-4xl mx-auto bg-gray-100 rounded-xl overflow-hidden shadow-lg card-hover mb-16">
         <div class="md:flex">
           <div class="md:flex-shrink-0 md:w-1/2">
-            <img class="h-full w-full object-cover" src="https://images.unsplash.com/photo-1552674605-db6ffd4facb5?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80" alt="Corredor em destaque">
+            <img class="h-full w-full object-cover" src="https://images.unsplash.com/photo-1552674605-db6ffd4facb5?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80" alt="Corredor melhorando pace em treino" loading="lazy">
           </div>
           <div class="p-8">
-            <div class="uppercase tracking-wide text-sm text-green-600 font-semibold">Dica Premium</div>
-            <a href="#" class="block mt-2 text-2xl font-bold text-gray-900 hover:text-green-600">Como reduzir 2min/km no seu pace em 8 semanas</a>
-            <p class="mt-3 text-gray-600">Método comprovado que já ajudou mais de 500 corredores a melhorarem seus tempos significativamente.</p>
-            <div class="mt-6 flex items-center">
-              <div>
+            <div class="flex flex-wrap gap-2 mb-3">
+              <span class="bg-green-100 text-green-800 text-xs font-semibold px-2.5 py-0.5 rounded">Performance</span>
+              <span class="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-0.5 rounded">Treinamento</span>
+            </div>
+            <h1 class="text-2xl font-bold mb-3">Como Reduzir Seu Pace em 2 Minutos por Km em 8 Semanas</h1>
+            <p class="text-gray-600 mb-4">Método comprovado que já ajudou mais de 500 corredores a melhorarem seus tempos significativamente.</p>
+            
+            <div class="flex items-center mt-6">
+              <div class="flex-shrink-0">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-600" viewBox="0 0 20 20" fill="currentColor">
+                  <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd" />
+                </svg>
+              </div>
+              <div class="ml-3">
                 <p class="text-sm font-medium text-green-600">Por Equipe TreinoRun</p>
-                <p class="text-sm text-gray-500">15 Mar 2025 · 8 min leitura</p>
+                <div class="flex space-x-1 text-sm text-gray-500">
+                  <time datetime="2025-03-15">15 Mar 2025</time>
+                  <span aria-hidden="true">&middot;</span>
+                  <span>8 min leitura</span>
+                </div>
               </div>
             </div>
-            <button class="mt-6 bg-green-600 text-white font-bold py-2 px-6 rounded-lg shadow-lg hover:bg-green-700 transition">
-              Ler Artigo
-            </button>
+            
+            <div class="mt-6">
+              <a href="#" class="inline-flex items-center bg-green-600 text-white font-bold py-2 px-6 rounded-lg shadow-lg hover:bg-green-700 transition">
+                Ler Artigo Completo
+                <svg xmlns="http://www.w3.org/2000/svg" class="ml-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                </svg>
+              </a>
+            </div>
           </div>
         </div>
       </div>
@@ -101,45 +144,48 @@
       <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
         <!-- Artigo 1 -->
         <div class="bg-gray-100 rounded-lg overflow-hidden shadow-md card-hover">
-          <img class="w-full h-48 object-cover" src="https://images.unsplash.com/photo-1517649763962-0c623066013b?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80" alt="Tênis de corrida">
+          <img class="w-full h-48 object-cover" src="https://images.unsplash.com/photo-1517649763962-0c623066013b?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80" alt="Tênis de corrida" loading="lazy">
           <div class="p-6">
-            <div class="flex items-center mb-2">
+            <div class="flex flex-wrap gap-2 mb-3">
               <span class="bg-green-100 text-green-800 text-xs font-semibold px-2.5 py-0.5 rounded">Iniciantes</span>
+              <span class="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-0.5 rounded">Equipamentos</span>
             </div>
-            <h3 class="text-xl font-bold mb-2"><a href="#" class="hover:text-green-600">Guia Definitivo para Escolher seu Tênis de Corrida</a></h3>
-            <p class="text-gray-600 mb-4">Não cometa esses erros comuns na hora de escolher seu calçado.</p>
+            <h2 class="text-xl font-bold mb-2"><a href="#" class="hover:text-green-600">Tênis de Corrida Ideal: Como Escolher o Melhor para Seu Tipo de Pisada</a></h2>
+            <p class="text-gray-600 mb-4">Guia completo para selecionar o calçado perfeito e evitar lesões.</p>
             <div class="flex justify-between items-center text-sm text-gray-500">
               <span>12 Mar 2025</span>
-              <span>5 min</span>
+              <span>6 min</span>
             </div>
           </div>
         </div>
 
         <!-- Artigo 2 -->
         <div class="bg-gray-100 rounded-lg overflow-hidden shadow-md card-hover">
-          <img class="w-full h-48 object-cover" src="https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80" alt="Alongamento">
+          <img class="w-full h-48 object-cover" src="https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80" alt="Alongamento" loading="lazy">
           <div class="p-6">
-            <div class="flex items-center mb-2">
+            <div class="flex flex-wrap gap-2 mb-3">
               <span class="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-0.5 rounded">Prevenção</span>
+              <span class="bg-purple-100 text-purple-800 text-xs font-semibold px-2.5 py-0.5 rounded">Saúde</span>
             </div>
-            <h3 class="text-xl font-bold mb-2"><a href="#" class="hover:text-green-600">Rotina de Alongamento Pós-Corrida</a></h3>
-            <p class="text-gray-600 mb-4">Os 8 exercícios essenciais para evitar lesões e melhorar recuperação.</p>
+            <h2 class="text-xl font-bold mb-2"><a href="#" class="hover:text-green-600">Rotina de Alongamento Pós-Corrida: Os 8 Exercícios Essenciais</a></h2>
+            <p class="text-gray-600 mb-4">Evite lesões e melhore sua recuperação com esta sequência comprovada.</p>
             <div class="flex justify-between items-center text-sm text-gray-500">
               <span>5 Mar 2025</span>
-              <span>6 min</span>
+              <span>5 min</span>
             </div>
           </div>
         </div>
 
         <!-- Artigo 3 -->
         <div class="bg-gray-100 rounded-lg overflow-hidden shadow-md card-hover">
-          <img class="w-full h-48 object-cover" src="https://images.unsplash.com/photo-1511988617509-a57c8a288659?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80" alt="Nutrição">
+          <img class="w-full h-48 object-cover" src="https://images.unsplash.com/photo-1511988617509-a57c8a288659?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80" alt="Nutrição" loading="lazy">
           <div class="p-6">
-            <div class="flex items-center mb-2">
-              <span class="bg-green-100 text-green-800 text-xs font-semibold px-2.5 py-0.5 rounded">Performance</span>
+            <div class="flex flex-wrap gap-2 mb-3">
+              <span class="bg-green-100 text-green-800 text-xs font-semibold px-2.5 py-0.5 rounded">Nutrição</span>
+              <span class="bg-purple-100 text-purple-800 text-xs font-semibold px-2.5 py-0.5 rounded">Performance</span>
             </div>
-            <h3 class="text-xl font-bold mb-2"><a href="#" class="hover:text-green-600">O que Comer Antes e Depois da Corrida</a></h3>
-            <p class="text-gray-600 mb-4">Alimentos que turbinam sua energia e recuperação muscular.</p>
+            <h2 class="text-xl font-bold mb-2"><a href="#" class="hover:text-green-600">Alimentação para Corredores: O que Comer Antes, Durante e Depois</a></h2>
+            <p class="text-gray-600 mb-4">Maximize sua energia e recuperação com estas estratégias nutricionais.</p>
             <div class="flex justify-between items-center text-sm text-gray-500">
               <span>28 Fev 2025</span>
               <span>7 min</span>
@@ -173,7 +219,23 @@
 
   <!-- Rodapé -->
   <footer class="bg-gradient-to-r from-green-500 to-blue-500 text-white py-8 text-center">
-    <p class="text-lg">© 2025 Transforme sua Corrida. Todos os direitos reservados.</p>
+    <div class="container mx-auto px-4">
+      <p class="text-lg mb-2">© 2025 Transforme sua Corrida. Todos os direitos reservados.</p>
+      <div class="flex justify-center space-x-6">
+        <a href="#" class="text-white hover:text-gray-200">
+          <span class="sr-only">Facebook</span>
+          <svg class="h-6 w-6" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path fill-rule="evenodd" d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.991 22 12z" clip-rule="evenodd" />
+          </svg>
+        </a>
+        <a href="#" class="text-white hover:text-gray-200">
+          <span class="sr-only">Instagram</span>
+          <svg class="h-6 w-6" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path fill-rule="evenodd" d="M12.315 2c2.43 0 2.784.013 3.808.06 1.064.049 1.791.218 2.427.465a4.902 4.902 0 011.772 1.153 4.902 4.902 0 011.153 1.772c.247.636.416 1.363.465 2.427.048 1.067.06 1.407.06 4.123v.08c0 2.643-.012 2.987-.06 4.043-.049 1.064-.218 1.791-.465 2.427a4.902 4.902 0 01-1.153 1.772 4.902 4.902 0 01-1.772 1.153c-.636.247-1.363.416-2.427.465-1.067.048-1.407.06-4.123.06-4.123 0-2.43-.013-2.784-.06-3.808-.049-1.064-.218-1.791-.465-2.427a4.902 4.902 0 01-1.153-1.772 4.902 4.902 0 01-1.772-1.153c-.636-.247-1.363-.416-2.427-.465-1.024-.047-1.379-.06-3.807-.06-2.43 0-2.784.013-3.808.06-1.064.049-1.791.218-2.427.465a4.902 4.902 0 01-1.772 1.153 4.902 4.902 0 01-1.153 1.772c-.247.636-.416 1.363-.465 2.427-.047 1.024-.06 1.379-.06 3.808 0 2.43.013 2.784.06 3.808.049 1.064.218 1.791.465 2.427a4.902 4.902 0 011.153 1.772 4.902 4.902 0 011.772 1.153c.636.247 1.363.416 2.427.465 1.067.048 1.407.06 4.123.06 4.123 0 2.643-.012 2.987-.06 4.043-.049 1.064-.218 1.791-.465 2.427a4.902 4.902 0 01-1.153 1.772 4.902 4.902 0 01-1.772 1.153c-.636.247-1.363.416-2.427.465-1.067.048-1.407.06-4.123.06-4.123 0-2.43-.013-2.784-.06-3.808-.049-1.064-.218-1.791-.465-2.427a4.902 4.902 0 01-1.153-1.772 4.902 4.902 0 01-1.772-1.153c-.636-.247-1.363-.416-2.427-.465-1.024-.047-1.379-.06-3.807-.06-2.43 0-2.784.013-3.808.06-1.064.049-1.791.218-2.427.465a4.902 4.902 0 01-1.772 1.153 4.902 4.902 0 01-1.153 1.772c-.247.636-.416 1.363-.465 2.427-.047 1.024-.06 1.379-.06 3.808 0 2.43.013 2.784.06 3.808.049 1.064.218 1.791.465 2.427a4.902 4.902 0 011.153 1.772 4.902 4.902 0 011.772 1.153c.636.247 1.363.416 2.427.465 1.067.048 1.407.06 4.123.06 4.123v.08c0 2.643-.012 2.987-.06 4.043-.049 1.064-.218 1.791-.465 2.427a4.902 4.902 0 01-1.153 1.772 4.902 4.902 0 01-1.772 1.153c-.636.247-1.363.416-2.427.465-1.067.048-1.407.06-4.123.06-4.123 0-2.43-.013-2.784-.06-3.808zM12 6.865a5.135 5.135 0 110 10.27 5.135 5.135 0 010-10.27zm0 1.802a3.333 3.333 0 100 6.666 3.333 3.333 0 000-6.666zm5.338-3.205a1.2 1.2 0 110 2.4 1.2 1.2 0 010-2.4z" clip-rule="evenodd" />
+          </svg>
+        </a>
+      </div>
+    </div>
   </footer>
 
   <!-- Modal Calendário - Atualizado para funcionar como no primeiro código -->
