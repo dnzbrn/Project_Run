@@ -641,6 +641,32 @@ def mercadopago_webhook():
                 if status == "active":
                     enviar_email_confirmacao_pagamento(email, nome)
 
+	# === NOVO CÓDIGO GA4 ===
+            gtag_event = f"""
+            <script>
+                gtag('event', 'purchase', {{
+                    transaction_id: '{subscription_id}',
+                    value: 59.90,
+                    currency: 'BRL',
+                    items: [{{
+                        item_id: 'plano_anual',
+                        item_name: 'Plano Completo Anual',
+                        price: 59.90,
+                        quantity: 1
+                    }}]
+                }});
+            </script>
+            """
+            
+            # Envia o evento por e-mail (opcional)
+            msg = Message(
+                subject="[DEBUG] GA4 Purchase Event",
+                recipients=["contato@treinorun.com.br"],
+                html=gtag_event
+            )
+            mail.send(msg)
+            # === FIM DO NOVO CÓDIGO ===
+
         db.commit()
         return jsonify({"status": "success"}), 200
 
