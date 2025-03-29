@@ -342,6 +342,18 @@ def resultado():
 def artigo_pace():
     return render_template('artigos/artigo-melhorar-pace.html')
 
+@app.route('/artigos/tenis-corrida')
+def artigo_tenis():
+    return render_template('artigos/artigo-tenis-corrida.html')
+
+@app.route('/artigos/alongamento')
+def artigo_alongamento():
+    return render_template('artigos/artigo-alongamento.html')
+
+@app.route('/artigos/alimentacao')
+def artigo_alimentacao():
+    return render_template('artigos/artigo-alimentacao.html')
+
 # ================================================
 # ROTAS DE GERAÇÃO DE PLANOS
 # ================================================
