@@ -24,6 +24,18 @@ from openai import OpenAI
 import requests
 from flask_mail import Mail, Message
 
+
+# ================================================
+# DECORATOR PARA ROTAS ASSÍNCRONAS
+# ================================================
+
+def async_route(f):
+    """Permite usar async/await em rotas Flask"""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        return asyncio.run(f(*args, **kwargs))
+    return wrapper
+
 # ================================================
 # CONFIGURAÇÃO INICIAL
 # ================================================
