@@ -10,4 +10,5 @@ requests==2.31.0
 flask-mail==0.9.1
 python-dotenv==1.0.0
 waitress==2.1.2
+flask-limiter==2.8.0
 redis==4.5.5  # Necessário para conexão com Redis
