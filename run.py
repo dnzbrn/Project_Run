@@ -29,7 +29,7 @@ from flask_mail import Mail, Message
 # CONFIGURAÇÃO INICIAL PARA PRODUÇÃO
 # ================================================
 
-app = Flask(__name__, template_folder='templates')
+app = Flask(__name__, template_folder='Templates')
 app.secret_key = os.environ["FLASK_SECRET_KEY"]
 
 # Configurações de segurança
