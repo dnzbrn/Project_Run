@@ -540,11 +540,11 @@ def iniciar_pagamento():
 @limiter.limit("100 por dia")
 def mercadopago_webhook():
     try:
-        # 1. Registro inicial no log
+        # 1. Registro inicial
         logging.info(f"Webhook recebido - IP: {request.remote_addr}")
-        
-        # 2. Verificar se é uma notificação de teste
         dados_brutos = request.data.decode('utf-8')
+        
+        # 2. Verificar notificação de teste
         if dados_brutos == 'TEST_NOTIFICATION':
             logging.info("Notificação de teste recebida")
             registrar_log(
@@ -553,59 +553,108 @@ def mercadopago_webhook():
                 mensagem_erro=None
             )
             return jsonify({"status": "teste_recebido"}), 200
-        
-        # 3. Processar o payload JSON
+
+        # 3. Processar payload JSON
         try:
             payload = request.get_json()
             if not payload:
                 raise ValueError("Payload vazio")
         except Exception as e:
-            erro_msg = f"Payload JSON inválido: {str(e)}"
+            erro_msg = f"Erro ao decodificar JSON: {str(e)}"
             logging.error(erro_msg)
             registrar_log(
                 payload=dados_brutos,
                 status_processamento='erro',
                 mensagem_erro=erro_msg
             )
-            return jsonify({"erro": "JSON inválido"}), 400
+            return jsonify({"erro": "Formato inválido"}), 400
 
-        # 4. Registrar a notificação recebida
+        # 4. Registrar recebimento
         registrar_log(
             payload=json.dumps(payload),
             status_processamento='recebido',
             mensagem_erro=None
         )
 
-        # 5. Processar conforme o tipo de notificação
+        # 5. Determinar tipo de evento
         tipo = payload.get("type")
-        
-        if tipo == "subscription_preapproval":
+        acao = payload.get("action", "sem_acao")
+
+        # 6. Processar conforme tipo e ação
+        if tipo == "payment":
+            if acao == "payment.updated":
+                return processar_atualizacao_pagamento(payload)
+            else:
+                return processar_pagamento(payload)
+        elif tipo in ["subscription", "subscription_preapproval"]:
             return processar_assinatura(payload)
-        elif tipo == "payment":
-            return processar_pagamento(payload)
         else:
-            msg = f"Tipo de notificação não tratado: {tipo}"
-            logging.info(msg)
+            msg = f"Evento não suportado - Tipo: {tipo}, Ação: {acao}"
+            logging.warning(msg)
             registrar_log(
                 payload=json.dumps(payload),
                 status_processamento='ignorado',
                 mensagem_erro=msg
             )
             return jsonify({"status": "ignorado"}), 200
-            
+
     except Exception as e:
-        erro_msg = f"Erro fatal no webhook: {str(e)}"
+        erro_msg = f"Erro fatal: {str(e)}"
         logging.error(erro_msg, exc_info=True)
         registrar_log(
-            payload=dados_brutos if 'dados_brutos' in locals() else 'Não disponível',
+            payload=dados_brutos if 'dados_brutos' in locals() else str(payload),
             status_processamento='erro_fatal',
             mensagem_erro=erro_msg
         )
-        return jsonify({"erro": "Erro interno no servidor"}), 500
+        return jsonify({"erro": "Erro interno"}), 500
+
+
+def processar_atualizacao_pagamento(payload):
+    try:
+        payment_id = payload["data"]["id"]
+        logging.info(f"Processando atualização de pagamento: {payment_id}")
+
+        # Obter detalhes completos
+        detalhes = obter_detalhes_pagamento(payment_id)
+        if not detalhes:
+            raise ValueError("Falha ao obter detalhes do pagamento")
+
+        # Registrar processamento
+        registrar_log(
+            payload=json.dumps(detalhes),
+            status_processamento='processando',
+            mensagem_erro=None
+        )
+
+        # Implementar lógica de negócio
+        status = detalhes.get("status")
+        if status == "approved":
+            # Lógica para pagamento aprovado
+            pass
+        elif status == "pending":
+            # Lógica para pagamento pendente
+            pass
+
+        registrar_log(
+            payload=json.dumps(detalhes),
+            status_processamento='pagamento_atualizado',
+            mensagem_erro=None
+        )
+        return jsonify({"status": "sucesso"}), 200
+
+    except Exception as e:
+        erro_msg = f"Erro ao processar pagamento: {str(e)}"
+        logging.error(erro_msg)
+        registrar_log(
+            payload=json.dumps(payload),
+            status_processamento='erro_processamento',
+            mensagem_erro=erro_msg
+        )
+        return jsonify({"erro": str(e)}), 400
 
 
 def registrar_log(payload, status_processamento, mensagem_erro=None):
-    """Registra a tentativa no banco de dados"""
+    """Registra o log no banco de dados"""
     try:
         db.execute(
             text("""
@@ -617,95 +666,20 @@ def registrar_log(payload, status_processamento, mensagem_erro=None):
                 ) VALUES (
                     NOW(),
                     :payload,
-                    :status_processamento,
-                    :mensagem_erro
+                    :status,
+                    :mensagem
                 )
             """),
             {
                 "payload": payload,
-                "status_processamento": status_processamento,
-                "mensagem_erro": mensagem_erro
+                "status": status_processamento,
+                "mensagem": mensagem_erro
             }
         )
         db.commit()
     except Exception as e:
-        logging.error(f"Falha ao registrar log no BD: {str(e)}")
+        logging.error(f"Falha ao registrar log: {str(e)}")
         db.rollback()
-
-
-def processar_assinatura(payload):
-    try:
-        id_assinatura = payload["data"]["id"]
-        logging.info(f"Processando assinatura: {id_assinatura}")
-        
-        # Sua lógica de processamento aqui...
-        
-        registrar_log(
-            payload=json.dumps(payload),
-            status_processamento='assinatura_processada',
-            mensagem_erro=None
-        )
-        return jsonify({"status": "assinatura_processada"}), 200
-        
-    except Exception as e:
-        erro_msg = f"Erro ao processar assinatura: {str(e)}"
-        logging.error(erro_msg)
-        registrar_log(
-            payload=json.dumps(payload),
-            status_processamento='erro_processamento',
-            mensagem_erro=erro_msg
-        )
-        return jsonify({"erro": str(e)}), 400
-
-
-def processar_pagamento(payload):
-    try:
-        id_pagamento = payload["data"]["id"]
-        logging.info(f"Processando pagamento: {id_pagamento}")
-        
-        # 1. Obter detalhes do pagamento
-        detalhes_pagamento = obter_detalhes_pagamento(id_pagamento)
-        
-        if not detalhes_pagamento:
-            raise ValueError("Não foi possível obter detalhes do pagamento")
-        
-        # 2. Processar pagamento (sua lógica aqui)
-        status = detalhes_pagamento.get("status")
-        email = detalhes_pagamento.get("payer", {}).get("email")
-        
-        registrar_log(
-            payload=json.dumps(payload),
-            status_processamento='pagamento_processado',
-            mensagem_erro=None
-        )
-        return jsonify({"status": "pagamento_processado"}), 200
-        
-    except Exception as e:
-        erro_msg = f"Erro ao processar pagamento: {str(e)}"
-        logging.error(erro_msg, exc_info=True)
-        registrar_log(
-            payload=json.dumps(payload),
-            status_processamento='erro_processamento',
-            mensagem_erro=erro_msg
-        )
-        return jsonify({"erro": str(e)}), 400
-
-
-def obter_detalhes_pagamento(id_pagamento):
-    try:
-        resposta = requests.get(
-            f"https://api.mercadopago.com/v1/payments/{id_pagamento}",
-            headers={
-                "Authorization": f"Bearer {os.getenv('MERCADO_PAGO_ACCESS_TOKEN')}",
-                "Content-Type": "application/json"
-            },
-            timeout=15
-        )
-        resposta.raise_for_status()
-        return resposta.json()
-    except Exception as e:
-        logging.error(f"Erro ao consultar pagamento {id_pagamento}: {str(e)}")
-        return None
 
 # ================================================
 # INICIALIZAÇÃO
