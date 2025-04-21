@@ -540,15 +540,15 @@ def iniciar_pagamento():
 @limiter.limit("100 por dia")
 def mercadopago_webhook():
     try:
-        # 1. Registro inicial
-        logging.info(f"Webhook recebido - IP: {request.remote_addr}")
+        # 1. Registrar requisição
         dados_brutos = request.data.decode('utf-8')
-        
-        # 2. Verificar notificação de teste
+        logging.info(f"Webhook recebido - IP: {request.remote_addr} - Tamanho: {len(dados_brutos)} bytes")
+
+        # 2. Teste do Mercado Pago
         if dados_brutos == 'TEST_NOTIFICATION':
-            logging.info("Notificação de teste recebida")
+            logging.info("Teste de notificação recebido")
             registrar_log(dados_brutos, 'teste')
-            return jsonify({"status": "teste_recebido"}), 200
+            return jsonify({"status": "teste_ok"}), 200
 
         # 3. Processar payload
         try:
@@ -556,25 +556,25 @@ def mercadopago_webhook():
             if not payload:
                 raise ValueError("Payload vazio")
         except Exception as e:
-            erro_msg = f"Erro no JSON: {str(e)}"
+            erro_msg = f"Erro no JSON: {str(e)} - Dados: {dados_brutos[:200]}"
             logging.error(erro_msg)
-            registrar_log(dados_brutos, 'erro', erro_msg)
-            return jsonify({"erro": "Formato inválido"}), 400
+            registrar_log(dados_brutos, 'erro_json', erro_msg)
+            return jsonify({"erro": "JSON inválido"}), 400
 
         # 4. Registrar recebimento
         registrar_log(json.dumps(payload), 'recebido')
 
         # 5. Determinar tipo de evento
-        tipo = payload.get("type")
+        tipo = payload.get("type", "")
         acao = payload.get("action", "")
 
-        # 6. Processar conforme o tipo
-        if tipo == "subscription_preapproval":
+        # 6. Rotear para o processador correto
+        if tipo == "subscription_preapproval" or "subscription" in tipo:
             return processar_assinatura(payload)
         elif tipo == "payment" or acao == "payment.updated":
-            return processar_pagamento_webhook(payload)
+            return processar_pagamento_simples(payload)
         else:
-            msg = f"Evento não suportado: {tipo}/{acao}"
+            msg = f"Evento não suportado - Tipo: {tipo}, Ação: {acao}"
             logging.warning(msg)
             registrar_log(json.dumps(payload), 'ignorado', msg)
             return jsonify({"status": "ignorado"}), 200
@@ -582,43 +582,42 @@ def mercadopago_webhook():
     except Exception as e:
         erro_msg = f"Erro fatal: {str(e)}"
         logging.error(erro_msg, exc_info=True)
-        registrar_log(dados_brutos if 'dados_brutos' in locals() else str(payload), 'erro_fatal', erro_msg)
+        registrar_log(dados_brutos if 'dados_brutos' in locals() else "Erro desconhecido", 'erro_fatal', erro_msg)
         return jsonify({"erro": "Erro interno"}), 500
 
 
-def processar_pagamento_webhook(payload):
+def processar_pagamento_simples(payload):
     try:
-        # Extrair ID do pagamento de formatos diferentes
-        if "data" in payload and "id" in payload["data"]:
-            payment_id = payload["data"]["id"]
-        else:
-            payment_id = payload.get("id", "")
+        # Extrair ID do pagamento de diferentes formatos
+        payment_id = payload.get("data", {}).get("id") or payload.get("id") or payload.get("payment_id")
         
         if not payment_id:
-            raise ValueError("ID do pagamento não encontrado")
+            raise ValueError("ID do pagamento não encontrado no payload")
 
-        logging.info(f"Processando pagamento ID: {payment_id}")
+        logging.info(f"Iniciando processamento do pagamento: {payment_id}")
 
-        # Obter detalhes completos
+        # Registrar estágio atual
+        registrar_log(json.dumps({"payment_id": payment_id}), 'pagamento_iniciado')
+
+        # Obter detalhes da API
         detalhes = obter_detalhes_pagamento(payment_id)
         if not detalhes:
-            raise ValueError("Falha ao obter detalhes do pagamento")
+            raise ValueError(f"Falha ao obter detalhes do pagamento {payment_id}")
 
-        # Registrar processamento
-        registrar_log(json.dumps(detalhes), 'processando_pagamento')
-
-        # Implementar lógica de negócio
+        # Processar conforme status
         status = detalhes.get("status")
         if status == "approved":
-            registrar_pagamento_aprovado(detalhes)
+            return registrar_pagamento_aprovado(detalhes)
         elif status == "pending":
-            registrar_pagamento_pendente(detalhes)
-
-        registrar_log(json.dumps(detalhes), 'pagamento_processado')
-        return jsonify({"status": "sucesso"}), 200
+            return registrar_pagamento_pendente(detalhes)
+        else:
+            msg = f"Status não tratado: {status}"
+            logging.warning(msg)
+            registrar_log(json.dumps(detalhes), 'status_nao_tratado', msg)
+            return jsonify({"status": "ignorado"}), 200
 
     except Exception as e:
-        erro_msg = f"Erro no pagamento: {str(e)}"
+        erro_msg = f"Erro no pagamento {payment_id}: {str(e)}"
         logging.error(erro_msg)
         registrar_log(json.dumps(payload), 'erro_pagamento', erro_msg)
         return jsonify({"erro": str(e)}), 400
@@ -631,23 +630,51 @@ def obter_detalhes_pagamento(payment_id):
             "Content-Type": "application/json"
         }
         
-        resposta = requests.get(
+        response = requests.get(
             f"https://api.mercadopago.com/v1/payments/{payment_id}",
             headers=headers,
             timeout=10
         )
         
-        # Log detalhado para diagnóstico
-        logging.info(f"Resposta da API MP: Status {resposta.status_code}, Body: {resposta.text}")
+        logging.info(f"Resposta da API MP - Status: {response.status_code}")
         
-        resposta.raise_for_status()
-        return resposta.json()
+        if response.status_code == 404:
+            logging.error(f"Pagamento não encontrado: {payment_id}")
+            return None
+            
+        response.raise_for_status()
+        return response.json()
         
-    except requests.exceptions.RequestException as e:
-        logging.error(f"Erro na API MP: {str(e)}")
-        if hasattr(e, 'response') and e.response:
-            logging.error(f"Resposta de erro: {e.response.text}")
+    except Exception as e:
+        logging.error(f"Falha na API MP: {str(e)}")
         return None
+
+
+def registrar_log(payload, status, mensagem=None):
+    try:
+        db.execute(
+            text("""
+                INSERT INTO logs_webhook (
+                    data_recebimento,
+                    payload,
+                    status_processamento,
+                    mensagem_erro
+                ) VALUES (
+                    NOW(),
+                    :payload,
+                    :status,
+                    :mensagem
+                )
+            """),
+            {
+                "payload": payload,
+                "status": status,
+                "mensagem": mensagem
+            }
+        )
+        db.commit()
+    except Exception as e:
+        logging.error(f"Falha ao registrar log: {str(e)}")
 
 # ================================================
 # INICIALIZAÇÃO
