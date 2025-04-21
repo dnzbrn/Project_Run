@@ -541,7 +541,8 @@ def iniciar_pagamento():
 def mercadopago_webhook():
     try:
         # 1. Registro inicial no log
-        logging.info(f"Webhook recebido - IP: {request.remote_addr}")
+        client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+        logging.info(f"Webhook recebido - IP: {client_ip}")
         
         # 2. Verificar se é uma notificação de teste
         dados_brutos = request.data.decode('utf-8')
@@ -559,6 +560,10 @@ def mercadopago_webhook():
             payload = request.get_json()
             if not payload:
                 raise ValueError("Payload vazio")
+                
+            # Normalizar o payload para diferentes formatos de notificação
+            payload = normalizar_payload(payload)
+            
         except Exception as e:
             erro_msg = f"Payload JSON inválido: {str(e)}"
             logging.error(erro_msg)
@@ -579,15 +584,10 @@ def mercadopago_webhook():
         # 5. Processar conforme o tipo de notificação
         tipo = payload.get("type")
         
-        if tipo == "subscription_preapproval":
+        if tipo == "subscription_preapproval" or tipo == "preapproval":
             return processar_assinatura(payload)
         elif tipo == "payment":
-            # Modificação para tratar o formato de pagamento
-            if "action" in payload and payload["action"] == "payment.updated":
-                payment_id = payload["data"]["id"]
-                return processar_pagamento({"data": {"id": payment_id}, "type": "payment"})
-            else:
-                return processar_pagamento(payload)
+            return processar_pagamento(payload)
         else:
             msg = f"Tipo de notificação não tratado: {tipo}"
             logging.info(msg)
@@ -607,6 +607,30 @@ def mercadopago_webhook():
             mensagem_erro=erro_msg
         )
         return jsonify({"erro": "Erro interno no servidor"}), 500
+
+def normalizar_payload(payload_original):
+    """
+    Normaliza diferentes formatos de notificação do Mercado Pago para um formato padrão
+    """
+    payload = payload_original.copy()
+    
+    # Caso 1: Notificação de atualização de pagamento (payment.updated)
+    if payload.get("action") in ["payment.updated", "updated"] and "data" in payload:
+        if payload.get("type") == "payment" or payload.get("entity") == "payment":
+            return {
+                "data": {"id": payload["data"]["id"]},
+                "type": "payment"
+            }
+    
+    # Caso 2: Notificação de assinatura (subscription_preapproval)
+    if payload.get("entity") == "preapproval" or payload.get("type") == "subscription_preapproval":
+        return {
+            "data": {"id": payload["data"]["id"]},
+            "type": "subscription_preapproval"
+        }
+    
+    # Caso 3: Notificação padrão (já no formato correto)
+    return payload
 
 def registrar_log(payload, status_processamento, mensagem_erro=None):
     """Registra a tentativa no banco de dados"""
@@ -652,7 +676,6 @@ def processar_assinatura(payload):
         payer_email = detalhes_assinatura.get("payer_email")
         plan_id = detalhes_assinatura.get("preapproval_plan_id")
         external_reference = detalhes_assinatura.get("external_reference")
-        date_created = detalhes_assinatura.get("date_created")
         
         # 3. Verificar se é uma assinatura válida
         valid_statuses = ["authorized", "paused", "cancelled"]
@@ -771,7 +794,7 @@ def processar_pagamento(payload):
         return jsonify({"erro": str(e)}), 400
 
 # Funções auxiliares para banco de dados
-def obter_ou_criar_usuario(connection, email, external_reference=None, plano=None):
+def obter_ou_criar_usuario(connection, email=None, external_reference=None, plano=None):
     """Obtém ou cria um usuário no banco de dados"""
     usuario_id = None
     
