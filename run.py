@@ -541,61 +541,109 @@ def iniciar_pagamento():
 def mercadopago_webhook():
     # 1. Logs iniciais
     client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
-    logging.info(f"Webhook recebido – IP: {client_ip}")
-    logging.debug(f"Headers: {dict(request.headers)}")
+    logger.info(f"Webhook recebido - IP: {client_ip}")
+    logger.debug(f"Headers: {dict(request.headers)}")
     raw_body = request.data.decode('utf-8')
-    logging.debug(f"Payload bruto: {raw_body}")
+    logger.debug(f"Payload bruto: {raw_body}")
 
     # 2. Forçar parse JSON mesmo sem Content-Type correto
     try:
         payload = request.get_json(force=True)
+        if not payload:
+            raise ValueError("Payload vazio")
     except Exception as e:
         erro_msg = f"Falha ao decodificar JSON: {e}"
-        logging.error(erro_msg)
+        logger.error(erro_msg)
         _registrar_log(raw_body, 'erro', erro_msg)
         return jsonify({"erro": "JSON inválido"}), 400
 
-    # 3. Detecção de testes do Painel (payload contém 'action')
-    if payload.get("action") is not None:
-        logging.info("Notificação de teste (Painel) recebida")
+    # 3. Detecção de testes
+    if is_test_notification(payload):
+        logger.info("Notificação de teste recebida")
         _registrar_log(json.dumps(payload), 'teste', None)
         return jsonify({"status": "teste_recebido"}), 200
 
-    # 4. Detecção de testes de Sandbox (token TEST-)
-    access_token = os.getenv('MERCADO_PAGO_ACCESS_TOKEN', '')
-    if access_token.startswith('TEST-'):
-        logging.info("Notificação de teste (Sandbox) recebida")
-        _registrar_log(json.dumps(payload), 'teste', None)
-        return jsonify({"status": "teste_recebido"}), 200
-
-    # 5. Normalizar payload
+    # 4. Normalizar payload
     try:
-        norm = normalizar_payload(payload)
+        normalized_payload = normalizar_payload(payload)
+        logger.info(f"Payload normalizado: {normalized_payload}")
     except Exception as e:
         erro_msg = f"Erro na normalização: {e}"
-        logging.error(erro_msg)
+        logger.error(erro_msg)
         _registrar_log(json.dumps(payload), 'erro', erro_msg)
         return jsonify({"erro": "Falha na normalização"}), 400
 
-    # 6. Registrar recebimento
-    _registrar_log(json.dumps(norm), 'recebido', None)
+    # 5. Registrar recebimento
+    _registrar_log(json.dumps(normalized_payload), 'recebido', None)
 
-    # 7. Roteamento por tipo
-    tipo = norm.get("type")
-    if tipo == "subscription_preapproval":
-        return processar_assinatura(norm)
-    elif tipo == "payment":
-        return processar_pagamento(norm)
-    else:
-        msg = f"Tipo não tratado: {tipo}"
-        logging.info(msg)
-        _registrar_log(json.dumps(norm), 'ignorado', msg)
-        return jsonify({"status": "ignorado"}), 200
+    # 6. Roteamento por tipo
+    try:
+        tipo = normalized_payload.get("type")
+        if tipo == "subscription_preapproval":
+            return processar_assinatura(normalized_payload)
+        elif tipo == "payment":
+            return processar_pagamento(normalized_payload)
+        else:
+            msg = f"Tipo não tratado: {tipo}"
+            logger.warning(msg)
+            _registrar_log(json.dumps(normalized_payload), 'ignorado', msg)
+            return jsonify({"status": "ignorado"}), 200
+    except Exception as e:
+        logger.error(f"Erro no roteamento: {str(e)}", exc_info=True)
+        return jsonify({"erro": "Erro no processamento"}), 500
 
-# -----------------------------------------------------------------------------
-# Helpers internos (prefixados com _) – abrem e fecham sessão a cada uso
-# -----------------------------------------------------------------------------
+def is_test_notification(payload):
+    """Verifica se é uma notificação de teste"""
+    # Teste do painel (contém 'action')
+    if payload.get("action") is not None:
+        return True
+    
+    # Teste de sandbox (token TEST-)
+    access_token = os.getenv('MERCADO_PAGO_ACCESS_TOKEN', '')
+    if access_token.startswith('TEST-'):
+        return True
+    
+    # Teste explícito (type = test)
+    if payload.get('type') == 'test':
+        return True
+    
+    return False
+
+def normalizar_payload(payload):
+    """Normaliza todos os formatos de notificação para um padrão consistente"""
+    normalized = {
+        "type": "unknown",
+        "data": {"id": None}
+    }
+    
+    # Determinar o tipo
+    if payload.get('type') == 'test':
+        normalized["type"] = "test"
+    elif (payload.get("type") == "payment" or 
+          payload.get("entity") == "payment" or 
+          payload.get("action") in ["payment.updated", "updated"]):
+        normalized["type"] = "payment"
+    elif (payload.get("type") == "subscription_preapproval" or 
+          payload.get("entity") == "preapproval"):
+        normalized["type"] = "subscription_preapproval"
+    
+    # Extrair o ID de vários campos possíveis
+    id_fields = [
+        payload.get("data", {}).get("id"),
+        payload.get("id"),
+        payload.get("data", {}).get("payment_id"),
+        payload.get("data", {}).get("subscription_id")
+    ]
+    
+    normalized["data"]["id"] = next((id for id in id_fields if id is not None), None)
+    
+    if normalized["data"]["id"] is None:
+        raise ValueError("Não foi possível extrair ID da notificação")
+    
+    return normalized
+
 def _registrar_log(payload, status_processamento, mensagem_erro=None):
+    """Registra a notificação no banco de dados"""
     db = SessionLocal()
     try:
         db.execute(text("""
@@ -611,47 +659,34 @@ def _registrar_log(payload, status_processamento, mensagem_erro=None):
         })
         db.commit()
     except Exception as e:
-        logging.error(f"Falha ao registrar log: {e}")
+        logger.error(f"Falha ao registrar log: {e}")
         db.rollback()
     finally:
         db.close()
 
-def normalizar_payload(payload_original):
-    p = payload_original.copy()
-    # Caso: test genérico
-    if p.get('type') == 'test':
-        return {'type': 'test', 'data': p.get('data', {})}
-    # Atualização de pagamento legacy
-    if p.get("action") in ["payment.updated", "updated"] and "data" in p:
-        if p.get("type") == "payment" or p.get("entity") == "payment":
-            return {"data": {"id": p["data"]["id"]}, "type": "payment"}
-    # Assinatura
-    if p.get("entity") == "preapproval" or p.get("type") == "subscription_preapproval":
-        return {"data": {"id": p["data"]["id"]}, "type": "subscription_preapproval"}
-    # Já normal
-    return p
-
-# -----------------------------------------------------------------------------
-# Processamento de Assinaturas
-# -----------------------------------------------------------------------------
 def processar_assinatura(payload):
+    """Processa notificações de assinatura"""
     db = SessionLocal()
     try:
         sub_id = payload["data"]["id"]
-        logging.info(f"Processando assinatura: {sub_id}")
+        logger.info(f"Processando assinatura: {sub_id}")
 
+        # Obter detalhes da API
         detalhes = obter_detalhes_assinatura(sub_id)
         if not detalhes:
             raise ValueError("Não foi possível obter detalhes da assinatura")
 
+        # Extrair informações
         status = detalhes.get("status")
         email = detalhes.get("payer_email")
         plano = detalhes.get("preapproval_plan_id")
         ext_ref = detalhes.get("external_reference")
 
+        # Validar status
         if status not in ["authorized", "paused", "cancelled"]:
             raise ValueError(f"Status inválido: {status}")
 
+        # Processar no banco de dados
         with db.begin():
             user_id = obter_ou_criar_usuario(db, email, ext_ref, plano)
             processar_assinatura_db(db, sub_id, user_id, status)
@@ -661,26 +696,25 @@ def processar_assinatura(payload):
 
     except Exception as e:
         msg = f"Erro em assinatura: {e}"
-        logging.error(msg)
+        logger.error(msg, exc_info=True)
         _registrar_log(json.dumps(payload), 'erro_processamento', msg)
         return jsonify({"erro": str(e)}), 400
-
     finally:
         db.close()
 
-# -----------------------------------------------------------------------------
-# Processamento de Pagamentos
-# -----------------------------------------------------------------------------
 def processar_pagamento(payload):
+    """Processa notificações de pagamento"""
     db = SessionLocal()
     try:
         pay_id = payload["data"]["id"]
-        logging.info(f"Processando pagamento: {pay_id}")
+        logger.info(f"Processando pagamento: {pay_id}")
 
+        # Obter detalhes da API
         detalhes = obter_detalhes_pagamento(pay_id)
         if not detalhes:
             raise ValueError("Não foi possível obter detalhes do pagamento")
 
+        # Extrair informações
         status = detalhes.get("status")
         valor = detalhes.get("transaction_amount")
         email = detalhes.get("payer", {}).get("email")
@@ -688,19 +722,24 @@ def processar_pagamento(payload):
         metodo = detalhes.get("payment_method_id")
         dt_aprov = detalhes.get("date_approved")
 
+        # Verificar se foi aprovado
         if status != "approved":
-            logging.info(f"Ignorado – status {status}")
+            logger.info(f"Ignorando pagamento não aprovado - status: {status}")
             return jsonify({"status": "ignorado", "motivo": "nao_aprovado"}), 200
 
+        # Processar no banco de dados
         with db.begin():
+            # Verificar duplicata
             if verificar_pagamento_duplicado(db, pay_id):
-                logging.warning(f"Duplicado: {pay_id}")
+                logger.warning(f"Pagamento duplicado: {pay_id}")
                 return jsonify({"status": "ignorado", "motivo": "duplicado"}), 200
 
+            # Obter usuário
             user_id = obter_usuario_id(db, email, ext_ref)
             if not user_id:
                 raise ValueError("Usuário não encontrado")
 
+            # Registrar pagamento
             registrar_pagamento_db(db, pay_id, status, valor, metodo, dt_aprov, user_id)
             atualizar_ultima_geracao_usuario(db, user_id)
 
@@ -709,18 +748,18 @@ def processar_pagamento(payload):
 
     except Exception as e:
         msg = f"Erro em pagamento: {e}"
-        logging.error(msg, exc_info=True)
+        logger.error(msg, exc_info=True)
         _registrar_log(json.dumps(payload), 'erro_processamento', msg)
         return jsonify({"erro": str(e)}), 400
-
     finally:
         db.close()
 
-# -----------------------------------------------------------------------------
-# Funções auxiliares de BD
-# -----------------------------------------------------------------------------
+# Funções auxiliares de banco de dados
 def obter_ou_criar_usuario(connection, email=None, external_reference=None, plano=None):
+    """Obtém ou cria um usuário no banco de dados"""
     usuario_id = None
+    
+    # Tentar encontrar pelo external_reference
     if external_reference:
         res = connection.execute(
             text("SELECT id FROM usuarios WHERE id = :external_reference"),
@@ -729,7 +768,8 @@ def obter_ou_criar_usuario(connection, email=None, external_reference=None, plan
         row = res.fetchone()
         if row:
             usuario_id = row[0]
-
+    
+    # Se não encontrou, tentar pelo email
     if not usuario_id and email:
         res = connection.execute(
             text("SELECT id FROM usuarios WHERE email = :email"),
@@ -738,10 +778,12 @@ def obter_ou_criar_usuario(connection, email=None, external_reference=None, plan
         row = res.fetchone()
         if row:
             usuario_id = row[0]
-
+    
+    # Se não encontrou, criar novo usuário
     if not usuario_id:
         if not email:
             raise ValueError("Email é necessário para criar novo usuário")
+        
         res = connection.execute(text("""
             INSERT INTO usuarios (
                 email, data_inscricao, ultima_geracao, plano
@@ -751,21 +793,26 @@ def obter_ou_criar_usuario(connection, email=None, external_reference=None, plan
         """), {"email": email, "plano": plano})
         usuario_id = res.fetchone()[0]
     else:
+        # Atualizar plano se necessário
         if plano:
             connection.execute(
                 text("UPDATE usuarios SET plano = :plano WHERE id = :usuario_id"),
                 {"plano": plano, "usuario_id": usuario_id}
             )
-
+    
     return usuario_id
 
 def processar_assinatura_db(connection, subscription_id, usuario_id, status):
+    """Processa a assinatura no banco de dados"""
+    # Verificar se já existe uma assinatura para este usuário
     res = connection.execute(
         text("SELECT id FROM assinatura WHERE usuario_id = :usuario_id"),
         {"usuario_id": usuario_id}
     )
     row = res.fetchone()
+    
     if row:
+        # Atualizar assinatura existente
         connection.execute(text("""
             UPDATE assinatura
             SET subscription_id = :subscription_id,
@@ -778,6 +825,7 @@ def processar_assinatura_db(connection, subscription_id, usuario_id, status):
             "usuario_id": usuario_id
         })
     else:
+        # Criar nova assinatura
         connection.execute(text("""
             INSERT INTO assinatura (
                 subscription_id, usuario_id, status, data_criacao, data_atualizacao
@@ -791,6 +839,7 @@ def processar_assinatura_db(connection, subscription_id, usuario_id, status):
         })
 
 def verificar_pagamento_duplicado(connection, payment_id):
+    """Verifica se o pagamento já foi processado"""
     res = connection.execute(
         text("SELECT id FROM pagamento WHERE payment_id = :payment_id"),
         {"payment_id": payment_id}
@@ -798,6 +847,7 @@ def verificar_pagamento_duplicado(connection, payment_id):
     return res.fetchone() is not None
 
 def registrar_pagamento_db(connection, payment_id, status, valor, metodo_pagamento, data_pagamento, usuario_id):
+    """Registra o pagamento no banco de dados"""
     connection.execute(text("""
         INSERT INTO pagamento (
             payment_id, status, valor, metodo_pagamento, data_pagamento, usuario_id
@@ -814,12 +864,14 @@ def registrar_pagamento_db(connection, payment_id, status, valor, metodo_pagamen
     })
 
 def atualizar_ultima_geracao_usuario(connection, usuario_id):
+    """Atualiza a última geração do usuário"""
     connection.execute(
         text("UPDATE usuarios SET ultima_geracao = NOW() WHERE id = :usuario_id"),
         {"usuario_id": usuario_id}
     )
 
 def obter_usuario_id(connection, email=None, external_reference=None):
+    """Obtém o ID do usuário por email ou external_reference"""
     if external_reference:
         res = connection.execute(
             text("SELECT id FROM usuarios WHERE id = :external_reference"),
@@ -828,6 +880,7 @@ def obter_usuario_id(connection, email=None, external_reference=None):
         row = res.fetchone()
         if row:
             return row[0]
+    
     if email:
         res = connection.execute(
             text("SELECT id FROM usuarios WHERE email = :email"),
@@ -836,46 +889,14 @@ def obter_usuario_id(connection, email=None, external_reference=None):
         row = res.fetchone()
         if row:
             return row[0]
+    
     return None
 
-def obter_detalhes_assinatura(sub_id):
-    try:
-        resp = requests.get(
-            f"https://api.mercadopago.com/preapproval/{sub_id}",
-            headers={
-                "Authorization": f"Bearer {os.getenv('MERCADO_PAGO_ACCESS_TOKEN')}",
-                "Content-Type": "application/json"
-            },
-            timeout=15
-        )
-        resp.raise_for_status()
-        return resp.json()
-    except Exception as e:
-        logging.error(f"Erro API assinatura {sub_id}: {e}")
-        return None
-
-def obter_detalhes_pagamento(pay_id):
-    try:
-        resp = requests.get(
-            f"https://api.mercadopago.com/v1/payments/{pay_id}",
-            headers={
-                "Authorization": f"Bearer {os.getenv('MERCADO_PAGO_ACCESS_TOKEN')}",
-                "Content-Type": "application/json"
-            },
-            timeout=15
-        )
-        resp.raise_for_status()
-        return resp.json()
-    except Exception as e:
-        logging.error(f"Erro API pagamento {pay_id}: {e}")
-        return None
-
-# -----------------------------------------------------------------------------
-# Integração com API Mercado Pago
-# -----------------------------------------------------------------------------
+# Integração com API do Mercado Pago
 def obter_detalhes_assinatura(id_assinatura):
+    """Obtém detalhes da assinatura da API do Mercado Pago"""
     try:
-        resp = requests.get(
+        response = requests.get(
             f"https://api.mercadopago.com/preapproval/{id_assinatura}",
             headers={
                 "Authorization": f"Bearer {os.getenv('MERCADO_PAGO_ACCESS_TOKEN')}",
@@ -883,15 +904,16 @@ def obter_detalhes_assinatura(id_assinatura):
             },
             timeout=15
         )
-        resp.raise_for_status()
-        return resp.json()
+        response.raise_for_status()
+        return response.json()
     except Exception as e:
-        logging.error(f"Erro ao consultar assinatura {id_assinatura}: {e}")
+        logger.error(f"Erro ao consultar assinatura {id_assinatura}: {e}")
         return None
 
 def obter_detalhes_pagamento(id_pagamento):
+    """Obtém detalhes do pagamento da API do Mercado Pago"""
     try:
-        resp = requests.get(
+        response = requests.get(
             f"https://api.mercadopago.com/v1/payments/{id_pagamento}",
             headers={
                 "Authorization": f"Bearer {os.getenv('MERCADO_PAGO_ACCESS_TOKEN')}",
@@ -899,10 +921,10 @@ def obter_detalhes_pagamento(id_pagamento):
             },
             timeout=15
         )
-        resp.raise_for_status()
-        return resp.json()
+        response.raise_for_status()
+        return response.json()
     except Exception as e:
-        logging.error(f"Erro ao consultar pagamento {id_pagamento}: {e}")
+        logger.error(f"Erro ao consultar pagamento {id_pagamento}: {e}")
         return None
 
 # ================================================
