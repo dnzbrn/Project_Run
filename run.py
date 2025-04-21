@@ -643,7 +643,33 @@ def processar_assinatura(payload):
         id_assinatura = payload["data"]["id"]
         logging.info(f"Processando assinatura: {id_assinatura}")
         
-        # Sua lógica de processamento aqui...
+        # INÍCIO DA LÓGICA DE PROCESSAMENTO (ADICIONE ISSO)
+        with db.begin() as conn:
+            conn.execute(
+                text("""
+                    INSERT INTO assinatura (
+                        id, 
+                        subscription_id, 
+                        status, 
+                        data_atualizacao
+                    ) VALUES (
+                        :id, 
+                        :subscription_id, 
+                        :status, 
+                        NOW()
+                    )
+                    ON CONFLICT (subscription_id) 
+                    DO UPDATE SET 
+                        status = EXCLUDED.status,
+                        data_atualizacao = NOW()
+                """),
+                {
+                    "id": str(uuid.uuid4()),
+                    "subscription_id": id_assinatura,
+                    "status": payload.get("action", "updated")
+                }
+            )
+        # FIM DA LÓGICA ADICIONAD
         
         registrar_log(
             payload=json.dumps(payload),
