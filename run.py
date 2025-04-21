@@ -584,7 +584,7 @@ def mercadopago_webhook():
         # 5. Processar conforme o tipo de notificação
         tipo = payload.get("type")
         
-        if tipo == "subscription_preapproval" or tipo == "preapproval":
+        if tipo == "subscription_preapproval":
             return processar_assinatura(payload)
         elif tipo == "payment":
             return processar_pagamento(payload)
