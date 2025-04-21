@@ -24,21 +24,19 @@ from openai import OpenAI
 import requests
 from flask_mail import Mail, Message
 
-
-# ================================================
-# DECORATOR PARA ROTAS ASSÍNCRONAS
-# ================================================
-
-def async_route(f):
-    """Permite usar async/await em rotas Flask"""
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        return asyncio.run(f(*args, **kwargs))
-    return wrapper
-
 # ================================================
 # CONFIGURAÇÃO INICIAL
 # ================================================
+
+# Configuração de logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('treinorun.log')
+    ]
+)
 
 basedir = os.path.abspath(os.path.dirname(__file__))
 template_dir = os.path.join(basedir, 'Templates')
@@ -87,6 +85,7 @@ client = OpenAI(
     timeout=30.0
 )
 
+# Configuração de e-mail
 app.config['MAIL_SERVER'] = 'smtp.zoho.com'
 app.config['MAIL_PORT'] = 587
 app.config['MAIL_USE_TLS'] = True
@@ -96,7 +95,7 @@ app.config['MAIL_DEFAULT_SENDER'] = ('TreinoRun', os.getenv('ZOHO_EMAIL'))
 mail = Mail(app)
 
 # ================================================
-# FUNÇÕES AUXILIARES (MANTIDAS COMO ORIGINAL)
+# FUNÇÕES AUXILIARES
 # ================================================
 
 def validar_assinatura(body, signature):
@@ -165,10 +164,11 @@ def registrar_geracao(email, plano):
                 text("""
                     INSERT INTO usuarios (email, plano, data_inscricao, ultima_geracao)
                     VALUES (:email, :plano, :data_inscricao, :ultima_geracao)
+                    RETURNING id
                 """),
                 {"email": email, "plano": plano, "data_inscricao": hoje, "ultima_geracao": hoje},
             )
-            usuario_id = db.execute(text("SELECT id FROM usuarios WHERE email = :email"), {"email": email}).fetchone()[0]
+            usuario_id = db.fetchone()[0]
         else:
             db.execute(
                 text("UPDATE usuarios SET ultima_geracao = :ultima_geracao, plano = :plano WHERE email = :email"),
@@ -181,9 +181,11 @@ def registrar_geracao(email, plano):
             {"usuario_id": usuario_id, "data_geracao": hoje},
         )
         db.commit()
+        return True
     except Exception as e:
         logging.error(f"Erro ao registrar geração: {e}")
         db.rollback()
+        return False
 
 async def gerar_plano_openai(prompt, semanas):
     try:
@@ -213,26 +215,37 @@ def enviar_email_confirmacao_pagamento(email, nome="Cliente"):
             <head>
                 <style>
                     body {{ font-family: Arial, sans-serif; line-height: 1.6; }}
-                    .header {{ background-color: #27ae60; color: white; padding: 20px; }}
+                    .header {{ background-color: #27ae60; color: white; padding: 20px; text-align: center; }}
+                    .content {{ padding: 20px; }}
+                    .footer {{ text-align: center; padding: 10px; font-size: 12px; color: #777; }}
                 </style>
             </head>
             <body>
                 <div class="header">
                     <h2>Pagamento Confirmado!</h2>
                 </div>
-                <p>Olá {nome},</p>
-                <p>Seu pagamento foi processado com sucesso!</p>
+                <div class="content">
+                    <p>Olá {nome},</p>
+                    <p>Seu pagamento foi processado com sucesso e seu plano anual foi ativado!</p>
+                    <p>Agora você pode gerar quantos planos de treino quiser durante 1 ano.</p>
+                    <p><a href="https://treinorun.com.br/seutreino" style="background-color: #27ae60; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Criar Novo Treino</a></p>
+                </div>
+                <div class="footer">
+                    <p>© {datetime.now().year} TreinoRun • <a href="https://treinorun.com.br">www.treinorun.com.br</a></p>
+                </div>
             </body>
             </html>
             """
         )
         mail.send(msg)
-        logging.info(f"E-mail enviado para {email}")
+        logging.info(f"E-mail de confirmação enviado para {email}")
+        return True
     except Exception as e:
-        logging.error(f"Erro ao enviar e-mail: {e}")
+        logging.error(f"Erro ao enviar e-mail de confirmação: {e}")
+        return False
 
 # ================================================
-# ROTAS PRINCIPAIS (TODAS EXPLÍCITAS)
+# ROTAS PRINCIPAIS
 # ================================================
 
 @app.route("/")
@@ -242,37 +255,16 @@ def landing():
         return render_template("landing.html")
     except Exception as e:
         logging.error(f"Erro ao renderizar landing.html: {e}")
-        return """
-        <!DOCTYPE html>
-        <html>
-        <body>
-            <h1>TreinoRun - Página Inicial</h1>
-            <p>Aplicação está funcionando, mas o template não foi carregado.</p>
-            <a href="/seutreino">Criar Treino</a>
-        </body>
-        </html>
-        """, 200
-
-@app.route("/blog")
-@limiter.limit("100 per hour")
-def blog():
-    try:
-        return render_template("blog.html")
-    except Exception as e:
-        logging.error(f"Erro ao renderizar blog.html: {e}")
-        return """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Blog - TreinoRun</title>
-        </head>
-        <body>
-            <h1>Blog TreinoRun</h1>
-            <p>Conteúdo do blog não pôde ser carregado.</p>
-            <a href="/">Voltar para a página inicial</a>
-        </body>
-        </html>
-        """, 200
+        return render_template_string("""
+            <!DOCTYPE html>
+            <html>
+            <body>
+                <h1>TreinoRun - Página Inicial</h1>
+                <p>Aplicação está funcionando, mas o template não foi carregado.</p>
+                <a href="/seutreino">Criar Treino</a>
+            </body>
+            </html>
+        """), 200
 
 @app.route("/seutreino")
 @limiter.limit("100 per hour")
@@ -281,15 +273,15 @@ def seutreino():
         return render_template("seutreino.html")
     except Exception as e:
         logging.error(f"Erro ao renderizar seutreino.html: {e}")
-        return """
-        <!DOCTYPE html>
-        <html>
-        <body>
-            <h1>Criar Seu Treino</h1>
-            <p>Formulário de criação de treino</p>
-        </body>
-        </html>
-        """, 200
+        return render_template_string("""
+            <!DOCTYPE html>
+            <html>
+            <body>
+                <h1>Criar Seu Treino</h1>
+                <p>Formulário de criação de treino</p>
+            </body>
+            </html>
+        """), 200
 
 @app.route("/sucesso")
 @limiter.limit("100 per hour")
@@ -298,32 +290,16 @@ def sucesso():
         return render_template("sucesso.html")
     except Exception as e:
         logging.error(f"Erro ao renderizar sucesso.html: {e}")
-        return """
-        <!DOCTYPE html>
-        <html>
-        <body>
-            <h1>Sucesso!</h1>
-            <p>Operação concluída com sucesso.</p>
-        </body>
-        </html>
-        """, 200
-
-@app.route("/erro")
-@limiter.limit("100 per hour")
-def erro():
-    try:
-        return render_template("erro.html")
-    except Exception as e:
-        logging.error(f"Erro ao renderizar erro.html: {e}")
-        return """
-        <!DOCTYPE html>
-        <html>
-        <body>
-            <h1>Erro</h1>
-            <p>Ocorreu um erro inesperado.</p>
-        </body>
-        </html>
-        """, 200
+        return render_template_string("""
+            <!DOCTYPE html>
+            <html>
+            <body>
+                <h1>Sucesso!</h1>
+                <p>Pagamento aprovado e plano ativado com sucesso.</p>
+                <a href="/seutreino">Criar seu primeiro treino</a>
+            </body>
+            </html>
+        """), 200
 
 @app.route("/pendente")
 @limiter.limit("100 per hour")
@@ -332,15 +308,34 @@ def pendente():
         return render_template("pendente.html")
     except Exception as e:
         logging.error(f"Erro ao renderizar pendente.html: {e}")
-        return """
-        <!DOCTYPE html>
-        <html>
-        <body>
-            <h1>Pagamento Pendente</h1>
-            <p>Seu pagamento está sendo processado.</p>
-        </body>
-        </html>
-        """, 200
+        return render_template_string("""
+            <!DOCTYPE html>
+            <html>
+            <body>
+                <h1>Pagamento Pendente</h1>
+                <p>Seu pagamento está sendo processado.</p>
+                <p>Você receberá um e-mail quando for confirmado.</p>
+            </body>
+            </html>
+        """), 200
+
+@app.route("/erro")
+@limiter.limit("100 per hour")
+def erro():
+    try:
+        return render_template("erro.html")
+    except Exception as e:
+        logging.error(f"Erro ao renderizar erro.html: {e}")
+        return render_template_string("""
+            <!DOCTYPE html>
+            <html>
+            <body>
+                <h1>Erro no Pagamento</h1>
+                <p>Ocorreu um problema com seu pagamento.</p>
+                <a href="/seutreino">Tentar novamente</a>
+            </body>
+            </html>
+        """), 200
 
 @app.route("/resultado")
 @limiter.limit("100 per hour")
@@ -361,28 +356,8 @@ def resultado():
         </html>
         """, 200
 
-@app.route('/artigos/melhorar-pace')
-@limiter.limit("100 per hour")
-def artigo_pace():
-    return render_template('artigos/artigo-melhorar-pace.html')
-
-@app.route('/artigos/tenis-corrida')
-@limiter.limit("100 per hour")
-def artigo_tenis():
-    return render_template('artigos/artigo-tenis-corrida.html')
-
-@app.route('/artigos/alongamento')
-@limiter.limit("100 per hour")
-def artigo_alongamento():
-    return render_template('artigos/artigo-alongamento.html')
-
-@app.route('/artigos/alimentacao')
-@limiter.limit("100 per hour")
-def artigo_alimentacao():
-    return render_template('artigos/artigo-alimentacao.html')
-
 # ================================================
-# ROTAS DE GERAÇÃO DE PLANOS (COMPLETAS)
+# ROTAS DE GERAÇÃO DE PLANOS
 # ================================================
 
 @app.route("/generate", methods=["POST"])
@@ -443,108 +418,15 @@ async def generate():
     """
 
     plano_gerado = await gerar_plano_openai(prompt, semanas)
-    registrar_geracao(email, plano)
-
-    session["titulo"] = f"Plano para: {dados_usuario['objetivo']}"
-    session["plano"] = "Este plano é gerado automaticamente. Consulte um profissional para ajustes.\n\n" + plano_gerado
-    
-    return redirect(url_for("resultado"))
-
-@app.route("/generatePace", methods=["POST"])
-@limiter.limit("10 per hour")
-@async_route
-async def generatePace():
-    dados_usuario = request.form
-    required_fields = ["email", "plano", "objetivo", "tempo_melhoria", "nivel", "dias", "tempo"]
-    
-    if not all(field in dados_usuario for field in required_fields):
-        return "Dados do formulário incompletos.", 400
-
-    email = dados_usuario["email"]
-    plano = dados_usuario["plano"]
-
-    if not pode_gerar_plano(email, plano):
-        if plano == "anual":
-            return redirect(url_for("iniciar_pagamento", email=email))
-        return "Você já gerou um plano gratuito este mês. Atualize para o plano anual para gerar mais planos.", 400
-
-    semanas = calcular_semanas(dados_usuario['tempo_melhoria'])
-    
-    try:
-        objetivo = dados_usuario['objetivo'].lower()
-        
-        # Padrões para extração de paces
-        padrao1 = r'(\d+[\.,]?\d*)\s*(?:min(?:uto)?s?\/km|min\/km|min km|pace|ritmo)[^\d]*(\d+[\.,]?\d*)'
-        padrao2 = r'(?:reduzir|melhorar|diminuir|baixar).*?(\d+[\.,]?\d*).*?para.*?(\d+[\.,]?\d*)'
-        padrao3 = r'(\d+[\.,]?\d*)\s*\/\s*km.*?(\d+[\.,]?\d*)'
-        padrao4 = r'(\d+)[\.,:](\d+).*?(\d+)[\.,:](\d+)'
-        
-        match = (re.search(padrao1, objetivo) or 
-                 re.search(padrao2, objetivo) or 
-                 re.search(padrao3, objetivo) or
-                 re.search(padrao4, objetivo))
-        
-        if not match:
-            return "Formato de objetivo inválido. Exemplos válidos:<br>" \
-                   "- Reduzir pace de 6:30 para 5:45<br>" \
-                   "- 6.5 min/km para 5.8 min/km<br>" \
-                   "- Melhorar ritmo de 7min/km para 6min30/km", 400
-        
-        if len(match.groups()) == 4:
-            pace_inicial = float(f"{match.group(1)}.{match.group(2)}")
-            pace_final = float(f"{match.group(3)}.{match.group(4)}")
-        else:
-            pace_inicial = float(match.group(1).replace(',', '.'))
-            pace_final = float(match.group(2).replace(',', '.'))
-            
-    except Exception as e:
-        logging.error(f"Erro ao processar objetivo: {e}")
-        return "Erro ao processar seu objetivo. Por favor, verifique o formato e tente novamente.", 400
-
-    prompt = f"""
-    Crie um plano de MELHORIA DE RITMO que GARANTA a evolução de {pace_inicial}min/km para {pace_final}min/km 
-    em {dados_usuario['tempo_melhoria']}. Siga exatamente:
-
-    REQUISITOS:
-    1. RESULTADO FINAL:
-       - Na semana {semanas}, o usuário deve conseguir correr consistentemente a {pace_final}min/km
-    
-    2. TREINOS DIÁRIOS:
-       - Detalhe cada sessão com:
-         * Ritmos específicos para cada segmento
-         * Exemplo: 
-           "Quarta-feira:
-           - 10' aquecimento (6:40/km)
-           - 6x800m a 4:50/km (recuperação 400m a 7:00/km)
-           - 10' desaquecimento (6:30/km)"
-    
-    3. PROGRESSÃO MENSURÁVEL:
-       - Mostre a melhoria semanal do pace
-       - Exemplo:
-         "Semana 1: Intervalos a 5:30/km
-         Semana 4: Intervalos a 5:10/km
-         Semana 8: Intervalos a 4:50/km (ritmo-alvo)"
-    
-    4. PERSONALIZAÇÃO:
-       - Nível: {dados_usuario['nivel']}
-       - Dias/semana: {dados_usuario['dias']}
-       - Tempo/sessão: {dados_usuario['tempo']} minutos
-
-    FORMATO DE RESPOSTA:
-    - Semana a semana com evolução clara
-    - Ritmos precisos em todos os treinos
-    - Garantia de que o pace-alvo será alcançado
-    """
-
-    plano_gerado = await gerar_plano_openai(prompt, semanas)
-    registrar_geracao(email, plano)
-
-    session["titulo"] = f"Plano de Pace: {pace_inicial}min/km → {pace_final}min/km"
-    session["plano"] = "Este plano é gerado automaticamente. Consulte um profissional para ajustes.\n\n" + plano_gerado
-    return redirect(url_for("resultado"))
+    if registrar_geracao(email, plano):
+        session["titulo"] = f"Plano para: {dados_usuario['objetivo']}"
+        session["plano"] = "Este plano é gerado automaticamente. Consulte um profissional para ajustes.\n\n" + plano_gerado
+        return redirect(url_for("resultado"))
+    else:
+        return "Erro ao registrar seu plano. Tente novamente.", 500
 
 # ================================================
-# ROTAS DE PAGAMENTO (COMPLETAS)
+# ROTAS DE PAGAMENTO (CORRIGIDAS)
 # ================================================
 
 @app.route("/iniciar_pagamento", methods=["GET", "POST"])
@@ -558,29 +440,41 @@ def iniciar_pagamento():
     email = dados_usuario["email"]
 
     try:
+        # Registrar tentativa de pagamento
         db.execute(
-            text("INSERT INTO tentativas_pagamento (email, data_tentativa) VALUES (:email, NOW())"),
+            text("""
+                INSERT INTO tentativas_pagamento (email, data_tentativa) 
+                VALUES (:email, NOW())
+            """),
             {"email": email}
         )
         db.commit()
     except Exception as e:
         logging.error(f"Erro ao registrar tentativa de pagamento: {e}")
+        db.rollback()
 
+    # Criar preferência de pagamento no Mercado Pago
     payload = {
         "items": [{
-            "title": "Plano Anual de Treino",
+            "title": "Plano Anual de Treino - TreinoRun",
+            "description": "Acesso ilimitado por 1 ano à geração de planos de treino personalizados",
             "quantity": 1,
             "unit_price": 59.9,
             "currency_id": "BRL",
         }],
-        "payer": {"email": email},
+        "payer": {
+            "email": email,
+            "name": dados_usuario.get("nome", "Cliente")
+        },
         "back_urls": {
-            "success": "https://treinorun.com.br/sucesso",
-            "failure": "https://treinorun.com.br/erro",
-            "pending": "https://treinorun.com.br/pendente",
+            "success": url_for("sucesso", _external=True),
+            "failure": url_for("erro", _external=True),
+            "pending": url_for("pendente", _external=True)
         },
         "auto_return": "approved",
-        "notification_url": "https://treinorun.com.br/webhook/mercadopago",
+        "notification_url": url_for("mercadopago_webhook", _external=True),
+        "external_reference": email,
+        "statement_descriptor": "TREINORUN"
     }
 
     try:
@@ -594,148 +488,134 @@ def iniciar_pagamento():
             timeout=10
         )
         response.raise_for_status()
+        
+        # Log da resposta do Mercado Pago
+        logging.info(f"Resposta do Mercado Pago: {response.json()}")
+        
         return redirect(response.json()["init_point"])
-    except Exception as e:
-        logging.error(f"Erro ao criar preferência de pagamento: {e}")
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Erro ao criar preferência de pagamento: {str(e)}")
+        if hasattr(e, 'response') and e.response is not None:
+            logging.error(f"Resposta do Mercado Pago: {e.response.text}")
         return "Erro ao processar o pagamento. Tente novamente mais tarde.", 500
-
-@app.route("/assinar_plano_anual", methods=["GET", "POST"])
-@limiter.limit("5 per hour")
-def assinar_plano_anual():
-    dados_usuario = request.form if request.method == "POST" else request.args
-
-    if "email" not in dados_usuario:
-        return "Email não fornecido.", 400
-
-    email = dados_usuario["email"]
-
-    try:
-        db.execute(
-            text("INSERT INTO usuarios (email, data_inscricao) VALUES (:email, NOW()) ON CONFLICT (email) DO NOTHING"),
-            {"email": email}
-        )
-        db.commit()
-    except Exception as e:
-        logging.error(f"Erro ao registrar email: {e}")
-
-    return redirect(url_for("iniciar_pagamento", email=email))
 
 @app.route("/webhook/mercadopago", methods=["POST"])
 @limiter.limit("100 per day")
 def mercadopago_webhook():
     try:
-        if not validar_assinatura(request.data, request.headers.get("X-Signature")):
+        # Verificar assinatura do webhook
+        signature = request.headers.get("X-Signature", "")
+        if not validar_assinatura(request.data, signature):
+            logging.warning("Tentativa de webhook com assinatura inválida")
             abort(403, description="Assinatura inválida")
 
         payload = request.json
-        evento = payload.get("action")
-        
-        if evento == "payment.updated":
+        logging.info(f"Webhook recebido: {json.dumps(payload, indent=2)}")
+
+        # Processar diferentes tipos de notificação
+        if payload.get("type") == "payment":
             payment_id = payload["data"]["id"]
-            status = payload["data"]["status"]
             
-            if not db.execute(text("SELECT 1 FROM pagamentos WHERE payment_id = :payment_id"), {"payment_id": payment_id}).fetchone():
+            # Obter detalhes do pagamento da API do Mercado Pago
+            try:
+                response = requests.get(
+                    f"https://api.mercadopago.com/v1/payments/{payment_id}",
+                    headers={
+                        "Authorization": f"Bearer {os.getenv('MERCADO_PAGO_ACCESS_TOKEN')}",
+                        "Content-Type": "application/json",
+                    },
+                    timeout=10
+                )
+                response.raise_for_status()
+                payment_data = response.json()
+                logging.info(f"Detalhes do pagamento: {json.dumps(payment_data, indent=2)}")
+            except Exception as e:
+                logging.error(f"Erro ao obter detalhes do pagamento {payment_id}: {e}")
+                return jsonify({"error": "Erro ao verificar pagamento"}), 500
+
+            # Extrair informações importantes
+            status = payment_data.get("status")
+            email = payment_data.get("payer", {}).get("email")
+            nome = payment_data.get("payer", {}).get("first_name", "Cliente")
+            external_reference = payment_data.get("external_reference")
+
+            # Registrar no banco de dados
+            try:
+                # Verificar se o usuário já existe
+                usuario = db.execute(
+                    text("SELECT id FROM usuarios WHERE email = :email"),
+                    {"email": email}
+                ).fetchone()
+
+                if not usuario:
+                    # Criar novo usuário
+                    db.execute(
+                        text("""
+                            INSERT INTO usuarios (email, data_inscricao, plano)
+                            VALUES (:email, NOW(), 'anual')
+                            RETURNING id
+                        """),
+                        {"email": email}
+                    )
+                    usuario_id = db.fetchone()[0]
+                else:
+                    usuario_id = usuario[0]
+
+                # Registrar/atualizar pagamento
                 db.execute(
-                    text("INSERT INTO pagamentos (payment_id, status, data_pagamento) VALUES (:payment_id, :status, NOW())"),
-                    {"payment_id": payment_id, "status": status},
+                    text("""
+                        INSERT INTO pagamentos 
+                        (payment_id, usuario_id, status, data_pagamento, external_reference)
+                        VALUES (:payment_id, :usuario_id, :status, NOW(), :external_reference)
+                        ON CONFLICT (payment_id) DO UPDATE
+                        SET status = EXCLUDED.status,
+                            data_atualizacao = NOW()
+                    """),
+                    {
+                        "payment_id": payment_id,
+                        "usuario_id": usuario_id,
+                        "status": status,
+                        "external_reference": external_reference
+                    }
                 )
 
-        elif evento == "subscription.updated":
-            subscription_id = payload["data"]["id"]
-            status = payload["data"]["status"]
-            email = payload["data"]["payer"]["email"]
-            nome = payload["data"]["payer"].get("first_name", "Cliente")
+                # Se pagamento aprovado, atualizar assinatura e enviar e-mail
+                if status == "approved":
+                    db.execute(
+                        text("""
+                            INSERT INTO assinaturas 
+                            (usuario_id, status, data_inicio, data_atualizacao)
+                            VALUES (:usuario_id, 'active', NOW(), NOW())
+                            ON CONFLICT (usuario_id) DO UPDATE
+                            SET status = 'active',
+                                data_atualizacao = NOW()
+                        """),
+                        {"usuario_id": usuario_id}
+                    )
+                    
+                    # Atualizar plano do usuário
+                    db.execute(
+                        text("UPDATE usuarios SET plano = 'anual' WHERE id = :usuario_id"),
+                        {"usuario_id": usuario_id}
+                    )
+                    
+                    # Enviar e-mail de confirmação
+                    enviar_email_confirmacao_pagamento(email, nome)
 
-            usuario = db.execute(text("SELECT id FROM usuarios WHERE email = :email"), {"email": email}).fetchone()
-            if not usuario:
-                db.execute(text("INSERT INTO usuarios (email, data_inscricao) VALUES (:email, NOW()) RETURNING id"), {"email": email})
-                usuario_id = db.fetchone()[0]
-            else:
-                usuario_id = usuario[0]
+                db.commit()
+                logging.info(f"Pagamento {payment_id} processado com status {status} para {email}")
+                return jsonify({"status": "success"}), 200
 
-            db.execute(
-                text("""
-                    INSERT INTO assinaturas (subscription_id, usuario_id, status, data_atualizacao)
-                    VALUES (:subscription_id, :usuario_id, :status, NOW())
-                    ON CONFLICT (subscription_id) DO UPDATE
-                    SET status = EXCLUDED.status, data_atualizacao = NOW()
-                """),
-                {"subscription_id": subscription_id, "usuario_id": usuario_id, "status": status},
-            )
-            
-            if status == "active":
-                enviar_email_confirmacao_pagamento(email, nome)
+            except Exception as e:
+                logging.error(f"Erro ao processar pagamento no banco de dados: {e}")
+                db.rollback()
+                return jsonify({"error": str(e)}), 500
 
-        db.commit()
-        return jsonify({"status": "success"}), 200
+        return jsonify({"status": "ignored"}), 200
 
     except Exception as e:
         logging.error(f"Erro ao processar webhook: {str(e)}")
-        db.rollback()
         return jsonify({"error": str(e)}), 500
-
-@app.route('/send_plan_email', methods=['POST'])
-@limiter.limit("10 per hour")
-def send_plan_email():
-    try:
-        if not request.is_json:
-            return jsonify({"success": False, "message": "Content-Type must be application/json"}), 400
-
-        data = request.get_json()
-        recipient = data.get('email')
-        pdf_data = data.get('pdfData')
-        
-        titulo_treino = session.get("titulo", "Plano de Treino")
-        
-        if "pace" in titulo_treino.lower():
-            tipo_treino = "Pace"
-        else:
-            tipo_treino = "Corrida"
-
-        nome_arquivo = f"TREINO_{tipo_treino.upper()}_{datetime.now().strftime('%Y%m%d')}.pdf"
-
-        msg = Message(
-            subject=f"📝 Seu Plano de {tipo_treino} - TreinoRun",
-            recipients=[recipient],
-            html=f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <style>
-                    body {{ font-family: 'Arial', sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }}
-                    .header {{ background-color: #2c3e50; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }}
-                    .content {{ padding: 20px; background-color: #f9f9f9; }}
-                    .footer {{ text-align: center; padding: 10px; font-size: 12px; color: #777; }}
-                </style>
-            </head>
-            <body>
-                <div class="header">
-                    <h2 style="margin:0;">Seu Plano de {tipo_treino} Personalizado</h2>
-                </div>
-                <div class="content">
-                    <p>Olá,</p>
-                    <p>Segue em anexo o seu plano <strong>{titulo_treino}</strong> gerado especialmente para você.</p>
-                    <a href="https://treinorun.com.br/seutreino" class="btn">Acessar Plataforma</a>
-                    <p>Atenciosamente,<br>Equipe TreinoRun</p>
-                </div>
-                <div class="footer">
-                    <p>© {datetime.now().year} TreinoRun • <a href="https://treinorun.com.br">www.treinorun.com.br</a></p>
-                </div>
-            </body>
-            </html>
-            """
-        )
-
-        pdf_content = base64.b64decode(pdf_data.split(',')[1])
-        msg.attach(nome_arquivo, "application/pdf", pdf_content)
-        mail.send(msg)
-        logging.info(f"E-mail enviado para: {recipient}")
-        
-        return jsonify({"success": True, "message": "E-mail enviado com sucesso!"})
-
-    except Exception as e:
-        logging.error(f"Erro ao enviar e-mail: {str(e)}")
-        return jsonify({"success": False, "message": "Erro ao processar o envio do e-mail"}), 500
 
 # ================================================
 # INICIALIZAÇÃO
@@ -743,6 +623,7 @@ def send_plan_email():
 
 if __name__ == "__main__":
     from waitress import serve
+    logging.info("Iniciando servidor TreinoRun...")
     serve(
         app,
         host="0.0.0.0",
