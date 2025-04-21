@@ -640,10 +640,52 @@ def registrar_log(payload, status_processamento, mensagem_erro=None):
 
 def processar_assinatura(payload):
     try:
-        id_assinatura = payload["data"]["id"]
-        logging.info(f"Processando assinatura: {id_assinatura}")
+        subscription_id = payload["data"]["id"]
+        logging.info(f"Processando assinatura: {subscription_id}")
         
-        # Sua lógica de processamento aqui...
+        # Obter detalhes da assinatura da API do Mercado Pago
+        resposta = requests.get(
+            f"https://api.mercadopago.com/preapproval/{subscription_id}",
+            headers={
+                "Authorization": f"Bearer {os.getenv('MERCADO_PAGO_ACCESS_TOKEN')}",
+                "Content-Type": "application/json"
+            },
+            timeout=15
+        )
+        resposta.raise_for_status()
+        detalhes = resposta.json()
+        
+        # Extrair o ID do usuário (adaptar conforme sua lógica)
+        usuario_id = obter_usuario_id(detalhes)
+        
+        if usuario_id is None:
+            raise ValueError("Não foi possível identificar o usuário da assinatura")
+        
+        # Registrar/Atualizar no banco de dados
+        db.execute(
+            text("""
+                INSERT INTO assinaturas (
+                    subscription_id,
+                    usuario_id,
+                    status,
+                    data_atualizacao
+                ) VALUES (
+                    :subscription_id,
+                    :usuario_id,
+                    :status,
+                    NOW()
+                )
+                ON CONFLICT (subscription_id) DO UPDATE SET
+                    status = EXCLUDED.status,
+                    data_atualizacao = NOW()
+            """),
+            {
+                "subscription_id": subscription_id,
+                "usuario_id": usuario_id,
+                "status": detalhes.get("status")
+            }
+        )
+        db.commit()
         
         registrar_log(
             payload=json.dumps(payload),
@@ -663,20 +705,66 @@ def processar_assinatura(payload):
         return jsonify({"erro": str(e)}), 400
 
 
+def obter_usuario_id(detalhes_assinatura):
+    """
+    Função auxiliar para extrair o ID do usuário dos detalhes da assinatura
+    Implemente conforme sua lógica de negócios
+    """
+    # Exemplo 1: Pode estar no external_reference
+    if "external_reference" in detalhes_assinatura:
+        return detalhes_assinatura["external_reference"]
+    
+    # Exemplo 2: Pode estar no e-mail do pagador
+    payer_email = detalhes_assinatura.get("payer_email")
+    if payer_email:
+        usuario = db.execute(
+            text("SELECT id FROM usuarios WHERE email = :email"),
+            {"email": payer_email}
+        ).fetchone()
+        if usuario:
+            return usuario[0]
+    
+    return None
+
+
 def processar_pagamento(payload):
     try:
-        id_pagamento = payload["data"]["id"]
-        logging.info(f"Processando pagamento: {id_pagamento}")
+        payment_id = payload["data"]["id"]
+        logging.info(f"Processando pagamento: {payment_id}")
         
-        # 1. Obter detalhes do pagamento
-        detalhes_pagamento = obter_detalhes_pagamento(id_pagamento)
+        # Obter detalhes do pagamento
+        detalhes_pagamento = obter_detalhes_pagamento(payment_id)
         
         if not detalhes_pagamento:
             raise ValueError("Não foi possível obter detalhes do pagamento")
         
-        # 2. Processar pagamento (sua lógica aqui)
         status = detalhes_pagamento.get("status")
-        email = detalhes_pagamento.get("payer", {}).get("email")
+        data_pagamento = detalhes_pagamento.get("date_approved") or detalhes_pagamento.get("date_created")
+        
+        # Registrar no banco de dados apenas se for um status relevante
+        if status in ["approved", "pending", "authorized"]:
+            db.execute(
+                text("""
+                    INSERT INTO pagamentos (
+                        payment_id,
+                        status,
+                        data_pagamento
+                    ) VALUES (
+                        :payment_id,
+                        :status,
+                        :data_pagamento
+                    )
+                    ON CONFLICT (payment_id) DO UPDATE SET
+                        status = EXCLUDED.status,
+                        data_pagamento = EXCLUDED.data_pagamento
+                """),
+                {
+                    "payment_id": payment_id,
+                    "status": status,
+                    "data_pagamento": data_pagamento
+                }
+            )
+            db.commit()
         
         registrar_log(
             payload=json.dumps(detalhes_pagamento),
@@ -711,6 +799,7 @@ def obter_detalhes_pagamento(id_pagamento):
     except Exception as e:
         logging.error(f"Erro ao consultar pagamento {id_pagamento}: {str(e)}")
         return None
+
 # ================================================
 # INICIALIZAÇÃO
 # ================================================
