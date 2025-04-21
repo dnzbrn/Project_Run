@@ -643,32 +643,38 @@ def processar_assinatura(payload):
         id_assinatura = payload["data"]["id"]
         logging.info(f"Processando assinatura: {id_assinatura}")
 
-        # EXATAMENTE IGUAL À FUNÇÃO registrar_log (que você confirmou funcionar)
-        db.session.execute(
-            text("""
-                INSERT INTO assinatura (
-                    id, 
-                    subscription_id, 
-                    status, 
-                    data_atualizacao
-                ) VALUES (
-                    :id, 
-                    :subscription_id, 
-                    :status, 
-                    NOW()
-                )
-                ON CONFLICT (subscription_id) 
-                DO UPDATE SET 
-                    status = EXCLUDED.status,
-                    data_atualizacao = NOW()
-            """),
-            {
-                "id": str(uuid.uuid4()),
-                "subscription_id": id_assinatura,
-                "status": payload.get("action", "updated")
-            }
-        )
-        db.session.commit()  # Commit explícito igual ao seu log
+        # CORREÇÃO: Usar db.session diretamente (igual ao registrar_log)
+        conn = db.engine.connect()  # Conexão direta que funciona
+        
+        try:
+            conn.execute(
+                text("""
+                    INSERT INTO assinatura (
+                        id, 
+                        subscription_id, 
+                        status, 
+                        data_atualizacao
+                    ) VALUES (
+                        :id, 
+                        :subscription_id, 
+                        :status, 
+                        NOW()
+                    )
+                    ON CONFLICT (subscription_id) 
+                    DO UPDATE SET 
+                        status = EXCLUDED.status,
+                        data_atualizacao = NOW()
+                """),
+                {
+                    "id": str(uuid.uuid4()),
+                    "subscription_id": id_assinatura,
+                    "status": payload.get("action", "updated")
+                }
+            )
+            conn.commit()  # Commit explícito
+            
+        finally:
+            conn.close()  # Fechamento garantido da conexão
 
         registrar_log(
             payload=json.dumps(payload),
@@ -678,7 +684,8 @@ def processar_assinatura(payload):
         return jsonify({"status": "assinatura_processada"}), 200
         
     except Exception as e:
-        db.session.rollback()  # Rollback explícito em caso de erro
+        if 'conn' in locals():
+            conn.rollback()  # Rollback se a conexão existir
         erro_msg = f"Erro ao processar assinatura: {str(e)}"
         logging.error(erro_msg)
         registrar_log(
