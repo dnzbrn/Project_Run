@@ -643,8 +643,8 @@ def processar_assinatura(payload):
         id_assinatura = payload["data"]["id"]
         logging.info(f"Processando assinatura: {id_assinatura}")
         
-# Modificação correta:
-        with db.session.begin() as transaction:  # Usando a sessão existente
+        # Correção: Usar db.session diretamente
+        try:
             db.session.execute(
                 text("""
                     INSERT INTO assinatura (
@@ -669,7 +669,14 @@ def processar_assinatura(payload):
                     "status": payload.get("action", "updated")
                 }
             )
-        
+            db.session.commit()
+            logging.info("Assinatura registrada com sucesso no banco de dados")
+            
+        except Exception as db_error:
+            db.session.rollback()
+            logging.error(f"Erro no banco de dados: {str(db_error)}")
+            raise
+
         registrar_log(
             payload=json.dumps(payload),
             status_processamento='assinatura_processada',
@@ -679,7 +686,7 @@ def processar_assinatura(payload):
         
     except Exception as e:
         erro_msg = f"Erro ao processar assinatura: {str(e)}"
-        logging.error(erro_msg)
+        logging.error(erro_msg, exc_info=True)
         registrar_log(
             payload=json.dumps(payload),
             status_processamento='erro_processamento',
