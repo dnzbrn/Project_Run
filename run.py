@@ -13,7 +13,7 @@ from io import BytesIO
 import base64
 import json
 
-from flask import Flask, request, render_template, redirect, url_for, session, jsonify, abort
+from flask import Flask, request, render_template,render_template_string, redirect, url_for, session, jsonify, abort
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -281,6 +281,27 @@ def landing():
             </body>
             </html>
         """), 200
+
+@app.route("/blog")
+@limiter.limit("100 per hour")
+def blog():
+    try:
+        return render_template("blog.html")
+    except Exception as e:
+        logging.error(f"Erro ao renderizar blog.html: {e}")
+        return """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Blog - TreinoRun</title>
+        </head>
+        <body>
+            <h1>Blog TreinoRun</h1>
+            <p>Conteúdo do blog não pôde ser carregado.</p>
+            <a href="/">Voltar para a página inicial</a>
+        </body>
+        </html>
+        """, 200
 
 @app.route("/seutreino")
 @limiter.limit("100 per hour")
