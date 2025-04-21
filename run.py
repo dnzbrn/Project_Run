@@ -643,9 +643,9 @@ def processar_assinatura(payload):
         id_assinatura = payload["data"]["id"]
         logging.info(f"Processando assinatura: {id_assinatura}")
         
-        # INÍCIO DA LÓGICA DE PROCESSAMENTO (ADICIONE ISSO)
-        with db.begin() as conn:
-            conn.execute(
+# Modificação correta:
+        with db.session.begin() as transaction:  # Usando a sessão existente
+            db.session.execute(
                 text("""
                     INSERT INTO assinatura (
                         id, 
@@ -669,7 +669,6 @@ def processar_assinatura(payload):
                     "status": payload.get("action", "updated")
                 }
             )
-        # FIM DA LÓGICA ADICIONAD
         
         registrar_log(
             payload=json.dumps(payload),
