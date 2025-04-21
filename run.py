@@ -537,83 +537,77 @@ def iniciar_pagamento():
         return "Erro ao processar o pagamento. Tente novamente mais tarde.", 500
 
 @app.route("/webhook/mercadopago", methods=["POST"])
-@limiter.limit("100 per day")
+@limiter.limit("100 por dia")
 def mercadopago_webhook():
     try:
         # 1. Registro inicial no log
-        client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
-        logger.info(f"Webhook received - IP: {client_ip}")
-
-        # 2. Verificar se é uma notificação de teste (melhorado)
-        dados_brutos = request.data.decode('utf-8')
+        logging.info(f"Webhook recebido - IP: {request.remote_addr}")
         
-        # Verifica tanto o payload bruto quanto o JSON parseado
-        if (dados_brutos == 'TEST_NOTIFICATION' or 
-            (request.is_json and request.get_json().get('type') in ['test_notification', 'test'])):
-            logger.info("Test notification received")
+        # 2. Verificar se é uma notificação de teste
+        dados_brutos = request.data.decode('utf-8')
+        if dados_brutos == 'TEST_NOTIFICATION':
+            logging.info("Notificação de teste recebida")
             registrar_log(
                 payload=dados_brutos,
                 status_processamento='teste',
                 mensagem_erro=None
             )
-            return jsonify({"status": "success", "message": "Test notification received"}), 200
-
+            return jsonify({"status": "teste_recebido"}), 200
+        
         # 3. Processar o payload JSON
         try:
             payload = request.get_json()
             if not payload:
-                raise ValueError("Empty payload")
+                raise ValueError("Payload vazio")
         except Exception as e:
-            erro_msg = f"Invalid JSON payload: {str(e)}"
-            logger.error(erro_msg)
+            erro_msg = f"Payload JSON inválido: {str(e)}"
+            logging.error(erro_msg)
             registrar_log(
                 payload=dados_brutos,
                 status_processamento='erro',
                 mensagem_erro=erro_msg
             )
-            return jsonify({"error": "Invalid JSON"}), 400
+            return jsonify({"erro": "JSON inválido"}), 400
 
         # 4. Registrar a notificação recebida
         registrar_log(
-            payload=json.dumps(payload, ensure_ascii=False),
-            status_processamento='received',
+            payload=json.dumps(payload),
+            status_processamento='recebido',
             mensagem_erro=None
         )
 
         # 5. Processar conforme o tipo de notificação
         tipo = payload.get("type")
-        action = payload.get("action", "")
-
+        
         if tipo == "subscription_preapproval":
             return processar_assinatura(payload)
-        elif tipo == "payment" or "payment" in action:
-            payment_id = payload["data"]["id"]
-            return processar_pagamento({
-                "data": {"id": payment_id},
-                "type": "payment",
-                "live_mode": payload.get("live_mode", False),
-                "user_id": payload.get("user_id"),
-                "date_created": payload.get("date_created")
-            })
+        elif tipo == "payment":
+            # Modificação para tratar o formato de pagamento
+            if "action" in payload and payload["action"] == "payment.updated":
+                payment_id = payload["data"]["id"]
+                return processar_pagamento({"data": {"id": payment_id}, "type": "payment"})
+            else:
+                return processar_pagamento(payload)
         else:
-            msg = f"Unhandled notification type: {tipo}"
-            logger.info(msg)
+            msg = f"Tipo de notificação não tratado: {tipo}"
+            logging.info(msg)
             registrar_log(
                 payload=json.dumps(payload),
-                status_processamento='ignored',
+                status_processamento='ignorado',
                 mensagem_erro=msg
             )
-            return jsonify({"status": "ignored"}), 200
-
+            return jsonify({"status": "ignorado"}), 200
+            
     except Exception as e:
-        erro_msg = f"Webhook processing error: {str(e)}"
-        logger.error(erro_msg, exc_info=True)
+        erro_msg = f"Erro fatal no webhook: {str(e)}"
+        logging.error(erro_msg, exc_info=True)
         registrar_log(
-            payload=dados_brutos if 'dados_brutos' in locals() else 'Not available',
-            status_processamento='error',
+            payload=dados_brutos if 'dados_brutos' in locals() else 'Não disponível',
+            status_processamento='erro_fatal',
             mensagem_erro=erro_msg
         )
-        return jsonify({"error": "Internal server error"}), 500
+        return jsonify({"erro": "Erro interno no servidor"}), 500
+
 
 def registrar_log(payload, status_processamento, mensagem_erro=None):
     """Registra a tentativa no banco de dados"""
@@ -633,269 +627,89 @@ def registrar_log(payload, status_processamento, mensagem_erro=None):
                 )
             """),
             {
-                "payload": payload[:10000],  # Limita o tamanho do payload
+                "payload": payload,
                 "status_processamento": status_processamento,
-                "mensagem_erro": mensagem_erro[:500] if mensagem_erro else None
+                "mensagem_erro": mensagem_erro
             }
         )
         db.commit()
     except Exception as e:
-        logger.error(f"Failed to save log to database: {str(e)}")
+        logging.error(f"Falha ao registrar log no BD: {str(e)}")
         db.rollback()
+
 
 def processar_assinatura(payload):
     try:
-        subscription_id = payload["data"]["id"]
-        logger.info(f"Processing subscription: {subscription_id}")
-
-        # 1. Obter detalhes da assinatura
-        detalhes = obter_detalhes_assinatura(subscription_id, payload.get('live_mode', False))
+        id_assinatura = payload["data"]["id"]
+        logging.info(f"Processando assinatura: {id_assinatura}")
         
-        status = detalhes.get("status") if detalhes else payload.get("action", "updated")
-        payer_id = detalhes.get("payer_id") if detalhes else payload.get("user_id")
-        external_ref = detalhes.get("external_reference") if detalhes else None
-
-        # 2. Obter ID do usuário
-        usuario_id = obter_usuario_id(payer_id, external_ref) or obter_usuario_por_notificacao(payload)
-        if not usuario_id:
-            raise ValueError("Could not associate with any user")
-
-        # 3. Atualizar assinatura no banco de dados
-        db.execute(
-            text("""
-                INSERT INTO assinatura (
-                    id, 
-                    subscription_id, 
-                    usuario_id, 
-                    status, 
-                    data_atualizacao,
-                    modo_teste
-                ) VALUES (
-                    :id, 
-                    :subscription_id, 
-                    :usuario_id, 
-                    :status, 
-                    NOW(),
-                    :modo_teste
-                )
-                ON CONFLICT (subscription_id) 
-                DO UPDATE SET 
-                    status = EXCLUDED.status,
-                    data_atualizacao = NOW()
-            """),
-            {
-                "id": str(uuid.uuid4()),
-                "subscription_id": subscription_id,
-                "usuario_id": usuario_id,
-                "status": status,
-                "modo_teste": not payload.get('live_mode', True)
-            }
-        )
-
-        # 4. Atualizar status do usuário se necessário
-        if status in ["cancelled", "expired", "paused"]:
-            db.execute(
-                text("UPDATE usuarios SET plano_ativo = false WHERE id = :user_id"),
-                {"user_id": usuario_id}
-            )
-        elif status == "authorized" and payload.get('live_mode', False):
-            db.execute(
-                text("UPDATE usuarios SET plano_ativo = true WHERE id = :user_id"),
-                {"user_id": usuario_id}
-            )
-
-        db.commit()
-
+        # Sua lógica de processamento aqui...
+        
         registrar_log(
             payload=json.dumps(payload),
-            status_processamento='subscription_processed',
+            status_processamento='assinatura_processada',
             mensagem_erro=None
         )
-        return jsonify({"status": "success"}), 200
-
+        return jsonify({"status": "assinatura_processada"}), 200
+        
     except Exception as e:
-        error_msg = f"Subscription processing error: {str(e)}"
-        logger.error(error_msg)
+        erro_msg = f"Erro ao processar assinatura: {str(e)}"
+        logging.error(erro_msg)
         registrar_log(
             payload=json.dumps(payload),
-            status_processamento='error',
-            mensagem_erro=error_msg
+            status_processamento='erro_processamento',
+            mensagem_erro=erro_msg
         )
-        return jsonify({"error": str(e)}), 400
+        return jsonify({"erro": str(e)}), 400
+
 
 def processar_pagamento(payload):
     try:
-        payment_id = payload["data"]["id"]
-        logger.info(f"Processing payment: {payment_id}")
-
-        # 1. Obter detalhes do pagamento
-        detalhes = obter_detalhes_pagamento(payment_id, payload.get('live_mode', False))
+        id_pagamento = payload["data"]["id"]
+        logging.info(f"Processando pagamento: {id_pagamento}")
         
-        status = detalhes.get("status") if detalhes else "pending"
-        amount = detalhes.get("transaction_amount") if detalhes else 0
-        payer_id = detalhes.get("payer", {}).get("id") if detalhes else payload.get("user_id")
-        data_pagamento = (detalhes.get("date_approved") or 
-                         detalhes.get("date_created") or 
-                         payload.get("date_created") or 
-                         datetime.utcnow().isoformat())
-
-        # 2. Obter ID do usuário
-        usuario_id = obter_usuario_id(payer_id, None)
-        if not usuario_id:
-            usuario_id = obter_usuario_por_notificacao(payload)
-            if not usuario_id:
-                raise ValueError("Could not associate payment with any user")
-
-        # 3. Atualizar pagamento no banco de dados
-        db.execute(
-            text("""
-                INSERT INTO pagamento (
-                    id, 
-                    payment_id, 
-                    status, 
-                    data_pagamento,
-                    usuario_id,
-                    valor,
-                    modo_teste
-                ) VALUES (
-                    :id, 
-                    :payment_id, 
-                    :status, 
-                    :data_pagamento,
-                    :usuario_id,
-                    :valor,
-                    :modo_teste
-                )
-                ON CONFLICT (payment_id) 
-                DO UPDATE SET 
-                    status = EXCLUDED.status,
-                    data_pagamento = EXCLUDED.data_pagamento
-            """),
-            {
-                "id": str(uuid.uuid4()),
-                "payment_id": payment_id,
-                "status": status,
-                "data_pagamento": data_pagamento,
-                "usuario_id": usuario_id,
-                "valor": amount,
-                "modo_teste": not payload.get('live_mode', True)
-            }
-        )
-
-        # 4. Atualizar status do usuário se pagamento aprovado e não for teste
-        if status == "approved" and payload.get('live_mode', False):
-            db.execute(
-                text("UPDATE usuarios SET plano_ativo = true WHERE id = :user_id"),
-                {"user_id": usuario_id}
-            )
-
-        db.commit()
-
+        # 1. Obter detalhes do pagamento
+        detalhes_pagamento = obter_detalhes_pagamento(id_pagamento)
+        
+        if not detalhes_pagamento:
+            raise ValueError("Não foi possível obter detalhes do pagamento")
+        
+        # 2. Processar pagamento (sua lógica aqui)
+        status = detalhes_pagamento.get("status")
+        email = detalhes_pagamento.get("payer", {}).get("email")
+        
         registrar_log(
-            payload=json.dumps(payload),
-            status_processamento='payment_processed',
+            payload=json.dumps(detalhes_pagamento),
+            status_processamento='pagamento_processado',
             mensagem_erro=None
         )
-        return jsonify({"status": "success"}), 200
-
+        return jsonify({"status": "pagamento_processado"}), 200
+        
     except Exception as e:
-        error_msg = f"Payment processing error: {str(e)}"
-        logger.error(error_msg, exc_info=True)
+        erro_msg = f"Erro ao processar pagamento: {str(e)}"
+        logging.error(erro_msg, exc_info=True)
         registrar_log(
             payload=json.dumps(payload),
-            status_processamento='error',
-            mensagem_erro=error_msg
+            status_processamento='erro_processamento',
+            mensagem_erro=erro_msg
         )
-        return jsonify({"error": str(e)}), 400
+        return jsonify({"erro": str(e)}), 400
 
-def obter_detalhes_assinatura(subscription_id, live_mode=False):
-    """Obtém detalhes da assinatura da API do Mercado Pago"""
+
+def obter_detalhes_pagamento(id_pagamento):
     try:
-        base_url = "https://api.mercadopago.com" if live_mode else "https://api.mercadopago.com/sandbox"
-        url = f"{base_url}/preapproval/{subscription_id}"
-        
-        response = requests.get(
-            url,
+        resposta = requests.get(
+            f"https://api.mercadopago.com/v1/payments/{id_pagamento}",
             headers={
                 "Authorization": f"Bearer {os.getenv('MERCADO_PAGO_ACCESS_TOKEN')}",
                 "Content-Type": "application/json"
             },
-            timeout=10
+            timeout=15
         )
-        response.raise_for_status()
-        return response.json()
+        resposta.raise_for_status()
+        return resposta.json()
     except Exception as e:
-        logger.error(f"Error getting subscription details: {str(e)}")
-        return None
-
-def obter_detalhes_pagamento(payment_id, live_mode=False):
-    """Obtém detalhes do pagamento da API do Mercado Pago"""
-    try:
-        base_url = "https://api.mercadopago.com" if live_mode else "https://api.mercadopago.com/sandbox"
-        url = f"{base_url}/v1/payments/{payment_id}"
-        
-        response = requests.get(
-            url,
-            headers={
-                "Authorization": f"Bearer {os.getenv('MERCADO_PAGO_ACCESS_TOKEN')}",
-                "Content-Type": "application/json"
-            },
-            timeout=10
-        )
-        response.raise_for_status()
-        return response.json()
-    except Exception as e:
-        logger.error(f"Error getting payment details: {str(e)}")
-        return None
-
-def obter_usuario_id(payer_id, external_reference):
-    """Obtém o ID do usuário no sistema"""
-    try:
-        if external_reference:
-            result = db.execute(
-                text("SELECT id FROM usuarios WHERE id_mp = :ref OR id = :ref"),
-                {"ref": external_reference}
-            ).fetchone()
-            if result:
-                return result[0]
-        
-        if payer_id:
-            result = db.execute(
-                text("SELECT id FROM usuarios WHERE id_mp = :payer_id"),
-                {"payer_id": payer_id}
-            ).fetchone()
-            if result:
-                return result[0]
-        
-        return None
-    except Exception as e:
-        logger.error(f"Error getting user ID: {str(e)}")
-        return None
-
-def obter_usuario_por_notificacao(payload):
-    """Tenta alternativas para encontrar o usuário"""
-    try:
-        # Tenta pelo subscription_id se existir
-        if "data" in payload and "id" in payload["data"]:
-            result = db.execute(
-                text("SELECT usuario_id FROM assinatura WHERE subscription_id = :sub_id"),
-                {"sub_id": payload["data"]["id"]}
-            ).fetchone()
-            if result:
-                return result[0]
-        
-        # Tenta pelo application_id se existir
-        if "application_id" in payload:
-            result = db.execute(
-                text("SELECT usuario_id FROM assinatura WHERE application_id = :app_id"),
-                {"app_id": payload["application_id"]}
-            ).fetchone()
-            if result:
-                return result[0]
-        
-        return None
-    except Exception as e:
-        logger.error(f"Error in alternative user lookup: {str(e)}")
+        logging.error(f"Erro ao consultar pagamento {id_pagamento}: {str(e)}")
         return None
 # ================================================
 # INICIALIZAÇÃO
