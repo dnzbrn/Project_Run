@@ -540,119 +540,146 @@ def iniciar_pagamento():
 @limiter.limit("100 per day")
 def mercadopago_webhook():
     try:
-        # Verificar assinatura do webhook
-        signature = request.headers.get("X-Signature", "")
+        # 1. Log inicial para diagnóstico
+        logging.info(f"Iniciando processamento do webhook - IP: {request.remote_addr}")
+        
+        # 2. Verificação da assinatura
+        signature = request.headers.get("X-Signature")
+        if not signature:
+            logging.warning("Tentativa de webhook sem assinatura")
+            abort(403, description="Assinatura ausente")
+
         if not validar_assinatura(request.data, signature):
-            logging.warning("Tentativa de webhook com assinatura inválida")
+            logging.warning(f"Assinatura inválida recebida: {signature}")
             abort(403, description="Assinatura inválida")
 
-        payload = request.json
-        logging.info(f"Webhook recebido: {json.dumps(payload, indent=2)}")
+        # 3. Processamento do payload
+        payload = request.get_json()
+        if not payload:
+            logging.error("Payload JSON inválido ou vazio")
+            abort(400, description="Payload inválido")
 
-        # Processar diferentes tipos de notificação
+        logging.info(f"Payload recebido - Tipo: {payload.get('type')} - ID: {payload.get('id')}")
+
+        # 4. Processamento específico para pagamentos
         if payload.get("type") == "payment":
             payment_id = payload["data"]["id"]
-            
-            # Obter detalhes do pagamento da API do Mercado Pago
+            logging.info(f"Processando pagamento ID: {payment_id}")
+
             try:
-                response = requests.get(
-                    f"https://api.mercadopago.com/v1/payments/{payment_id}",
-                    headers={
-                        "Authorization": f"Bearer {os.getenv('MERCADO_PAGO_ACCESS_TOKEN')}",
-                        "Content-Type": "application/json",
-                    },
-                    timeout=10
-                )
-                response.raise_for_status()
-                payment_data = response.json()
-                logging.info(f"Detalhes do pagamento: {json.dumps(payment_data, indent=2)}")
-            except Exception as e:
-                logging.error(f"Erro ao obter detalhes do pagamento {payment_id}: {e}")
-                return jsonify({"error": "Erro ao verificar pagamento"}), 500
+                # 5. Obter detalhes do pagamento
+                payment_data = obter_detalhes_pagamento(payment_id)
+                if not payment_data:
+                    logging.error(f"Detalhes do pagamento {payment_id} não encontrados")
+                    abort(502, description="Erro ao consultar pagamento")
 
-            # Extrair informações importantes
-            status = payment_data.get("status")
-            email = payment_data.get("payer", {}).get("email")
-            nome = payment_data.get("payer", {}).get("first_name", "Cliente")
-            external_reference = payment_data.get("external_reference")
+                # 6. Processar o pagamento
+                resultado = processar_pagamento_webhook(payment_data)
+                logging.info(f"Pagamento {payment_id} processado com sucesso - Status: {resultado['status']}")
+                
+                return jsonify({
+                    "status": "success",
+                    "payment_id": payment_id,
+                    "user_email": resultado.get("email")
+                }), 200
 
-            # Registrar no banco de dados
-            try:
-                # Verificar se o usuário já existe
-                usuario = db.execute(
-                    text("SELECT id FROM usuarios WHERE email = :email"),
-                    {"email": email}
-                ).fetchone()
+            except Exception as process_error:
+                logging.error(f"Erro ao processar pagamento {payment_id}: {str(process_error)}", exc_info=True)
+                abort(500, description="Erro no processamento do pagamento")
 
-                if not usuario:
-                    # Criar novo usuário
-                    db.execute(
-                        text("""
-                            INSERT INTO usuarios (email, data_inscricao, plano)
-                            VALUES (:email, NOW(), 'anual')
-                            RETURNING id
-                        """),
-                        {"email": email}
-                    )
-                    usuario_id = db.fetchone()[0]
-                else:
-                    usuario_id = usuario[0]
+        # 7. Outros tipos de notificação
+        logging.info(f"Ignorando notificação do tipo: {payload.get('type')}")
+        return jsonify({"status": "ignored", "type": payload.get("type")}), 200
 
-                # Registrar/atualizar pagamento
+    except HTTPException as http_error:
+        logging.warning(f"Erro HTTP no webhook: {http_error.description}")
+        raise
+    except Exception as e:
+        logging.error(f"Erro inesperado no webhook: {str(e)}", exc_info=True)
+        abort(500, description="Erro interno no servidor")
+
+
+def obter_detalhes_pagamento(payment_id):
+    """Obtém detalhes do pagamento da API do Mercado Pago"""
+    try:
+        response = requests.get(
+            f"https://api.mercadopago.com/v1/payments/{payment_id}",
+            headers={
+                "Authorization": f"Bearer {os.getenv('MERCADO_PAGO_ACCESS_TOKEN')}",
+                "Content-Type": "application/json"
+            },
+            timeout=15
+        )
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Erro na API do Mercado Pago: {str(e)}")
+        return None
+
+
+def processar_pagamento_webhook(payment_data):
+    """Processa os dados do pagamento e atualiza o banco de dados"""
+    try:
+        status = payment_data.get("status")
+        email = payment_data.get("payer", {}).get("email")
+        nome = payment_data.get("payer", {}).get("first_name", "Cliente")
+        payment_id = payment_data.get("id")
+        valor = payment_data.get("transaction_amount", 0)
+
+        with db.begin():
+            # 1. Registrar/Atualizar usuário
+            usuario = db.execute(
+                text("""
+                    INSERT INTO usuarios (email, plano, data_inscricao)
+                    VALUES (:email, 'anual', NOW())
+                    ON CONFLICT (email) DO UPDATE
+                    SET plano = 'anual'
+                    RETURNING id
+                """),
+                {"email": email}
+            ).fetchone()
+
+            # 2. Registrar pagamento
+            db.execute(
+                text("""
+                    INSERT INTO pagamentos 
+                    (payment_id, usuario_id, status, valor, data_pagamento)
+                    VALUES (:payment_id, :usuario_id, :status, :valor, NOW())
+                    ON CONFLICT (payment_id) DO UPDATE
+                    SET status = EXCLUDED.status,
+                        valor = EXCLUDED.valor,
+                        data_atualizacao = NOW()
+                """),
+                {
+                    "payment_id": payment_id,
+                    "usuario_id": usuario[0],
+                    "status": status,
+                    "valor": valor
+                }
+            )
+
+            # 3. Atualizar assinatura se aprovado
+            if status == "approved":
                 db.execute(
                     text("""
-                        INSERT INTO pagamentos 
-                        (payment_id, usuario_id, status, data_pagamento, external_reference)
-                        VALUES (:payment_id, :usuario_id, :status, NOW(), :external_reference)
-                        ON CONFLICT (payment_id) DO UPDATE
-                        SET status = EXCLUDED.status,
+                        INSERT INTO assinaturas 
+                        (usuario_id, status, data_inicio)
+                        VALUES (:usuario_id, 'active', NOW())
+                        ON CONFLICT (usuario_id) DO UPDATE
+                        SET status = 'active',
                             data_atualizacao = NOW()
                     """),
-                    {
-                        "payment_id": payment_id,
-                        "usuario_id": usuario_id,
-                        "status": status,
-                        "external_reference": external_reference
-                    }
+                    {"usuario_id": usuario[0]}
                 )
+                
+                # Enviar e-mail de confirmação
+                enviar_email_confirmacao_pagamento(email, nome)
 
-                # Se pagamento aprovado, atualizar assinatura e enviar e-mail
-                if status == "approved":
-                    db.execute(
-                        text("""
-                            INSERT INTO assinaturas 
-                            (usuario_id, status, data_inicio, data_atualizacao)
-                            VALUES (:usuario_id, 'active', NOW(), NOW())
-                            ON CONFLICT (usuario_id) DO UPDATE
-                            SET status = 'active',
-                                data_atualizacao = NOW()
-                        """),
-                        {"usuario_id": usuario_id}
-                    )
-                    
-                    # Atualizar plano do usuário
-                    db.execute(
-                        text("UPDATE usuarios SET plano = 'anual' WHERE id = :usuario_id"),
-                        {"usuario_id": usuario_id}
-                    )
-                    
-                    # Enviar e-mail de confirmação
-                    enviar_email_confirmacao_pagamento(email, nome)
-
-                db.commit()
-                logging.info(f"Pagamento {payment_id} processado com status {status} para {email}")
-                return jsonify({"status": "success"}), 200
-
-            except Exception as e:
-                logging.error(f"Erro ao processar pagamento no banco de dados: {e}")
-                db.rollback()
-                return jsonify({"error": str(e)}), 500
-
-        return jsonify({"status": "ignored"}), 200
+        return {"status": status, "email": email, "payment_id": payment_id}
 
     except Exception as e:
-        logging.error(f"Erro ao processar webhook: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        logging.error(f"Erro no processamento do pagamento: {str(e)}", exc_info=True)
+        raise
 
 # ================================================
 # INICIALIZAÇÃO
