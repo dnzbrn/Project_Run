@@ -95,6 +95,22 @@ app.config['MAIL_DEFAULT_SENDER'] = ('TreinoRun', os.getenv('ZOHO_EMAIL'))
 mail = Mail(app)
 
 # ================================================
+# DECORATOR PARA ROTAS ASSÍNCRONAS
+# ================================================
+
+def async_route(f):
+    """Permite usar async/await em rotas Flask"""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(f(*args, **kwargs))
+        finally:
+            loop.close()
+    return wrapper
+
+# ================================================
 # FUNÇÕES AUXILIARES
 # ================================================
 
