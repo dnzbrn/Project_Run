@@ -614,26 +614,23 @@ def processar_atualizacao_pagamento(payload):
         payment_id = payload["data"]["id"]
         logging.info(f"Processando atualização de pagamento: {payment_id}")
 
-        # Obter detalhes completos
         detalhes = obter_detalhes_pagamento(payment_id)
         if not detalhes:
             raise ValueError("Falha ao obter detalhes do pagamento")
 
-        # Registrar processamento
         registrar_log(
             payload=json.dumps(detalhes),
             status_processamento='processando',
             mensagem_erro=None
         )
 
-        # Implementar lógica de negócio
         status = detalhes.get("status")
         if status == "approved":
             # Lógica para pagamento aprovado
-            pass
+            registrar_pagamento_aprovado(detalhes)
         elif status == "pending":
             # Lógica para pagamento pendente
-            pass
+            registrar_pagamento_pendente(detalhes)
 
         registrar_log(
             payload=json.dumps(detalhes),
@@ -651,6 +648,121 @@ def processar_atualizacao_pagamento(payload):
             mensagem_erro=erro_msg
         )
         return jsonify({"erro": str(e)}), 400
+
+
+def processar_assinatura(payload):
+    try:
+        id_assinatura = payload["data"]["id"]
+        logging.info(f"Processando assinatura: {id_assinatura}")
+        
+        # Obter detalhes completos da assinatura
+        detalhes = obter_detalhes_assinatura(id_assinatura)
+        if not detalhes:
+            raise ValueError("Falha ao obter detalhes da assinatura")
+
+        registrar_log(
+            payload=json.dumps(detalhes),
+            status_processamento='processando_assinatura',
+            mensagem_erro=None
+        )
+
+        # Implemente sua lógica de assinatura aqui
+        status = detalhes.get("status")
+        if status == "authorized":
+            registrar_assinatura_ativa(detalhes)
+        elif status == "pending":
+            registrar_assinatura_pendente(detalhes)
+
+        registrar_log(
+            payload=json.dumps(detalhes),
+            status_processamento='assinatura_processada',
+            mensagem_erro=None
+        )
+        return jsonify({"status": "sucesso"}), 200
+        
+    except Exception as e:
+        erro_msg = f"Erro ao processar assinatura: {str(e)}"
+        logging.error(erro_msg)
+        registrar_log(
+            payload=json.dumps(payload),
+            status_processamento='erro_processamento',
+            mensagem_erro=erro_msg
+        )
+        return jsonify({"erro": str(e)}), 400
+
+
+def obter_detalhes_pagamento(payment_id):
+    try:
+        resposta = requests.get(
+            f"https://api.mercadopago.com/v1/payments/{payment_id}",
+            headers={
+                "Authorization": f"Bearer {os.getenv('MERCADO_PAGO_ACCESS_TOKEN')}",
+                "Content-Type": "application/json"
+            },
+            timeout=15
+        )
+        resposta.raise_for_status()
+        return resposta.json()
+    except Exception as e:
+        logging.error(f"Erro ao consultar pagamento {payment_id}: {str(e)}")
+        return None
+
+
+def obter_detalhes_assinatura(subscription_id):
+    try:
+        resposta = requests.get(
+            f"https://api.mercadopago.com/v1/subscriptions/{subscription_id}",
+            headers={
+                "Authorization": f"Bearer {os.getenv('MERCADO_PAGO_ACCESS_TOKEN')}",
+                "Content-Type": "application/json"
+            },
+            timeout=15
+        )
+        resposta.raise_for_status()
+        return resposta.json()
+    except Exception as e:
+        logging.error(f"Erro ao consultar assinatura {subscription_id}: {str(e)}")
+        return None
+
+
+def registrar_pagamento_aprovado(detalhes):
+    """Registra um pagamento aprovado no banco de dados"""
+    try:
+        # Implemente sua lógica de banco de dados aqui
+        pass
+    except Exception as e:
+        logging.error(f"Erro ao registrar pagamento aprovado: {str(e)}")
+        raise
+
+
+def registrar_pagamento_pendente(detalhes):
+    """Registra um pagamento pendente no banco de dados"""
+    try:
+        # Implemente sua lógica de banco de dados aqui
+        pass
+    except Exception as e:
+        logging.error(f"Erro ao registrar pagamento pendente: {str(e)}")
+        raise
+
+
+def registrar_assinatura_ativa(detalhes):
+    """Registra uma assinatura ativa no banco de dados"""
+    try:
+        # Implemente sua lógica de banco de dados aqui
+        pass
+    except Exception as e:
+        logging.error(f"Erro ao registrar assinatura ativa: {str(e)}")
+        raise
+
+
+def registrar_assinatura_pendente(detalhes):
+    """Registra uma assinatura pendente no banco de dados"""
+    try:
+        # Implemente sua lógica de banco de dados aqui
+        pass
+    except Exception as e:
+        logging.error(f"Erro ao registrar assinatura pendente: {str(e)}")
+        raise
 
 
 def registrar_log(payload, status_processamento, mensagem_erro=None):
