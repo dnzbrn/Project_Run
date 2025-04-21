@@ -640,25 +640,34 @@ def registrar_log(payload, status_processamento, mensagem_erro=None):
 
 def processar_assinatura(payload):
     try:
+        # Extrai o ID da assinatura do payload
         subscription_id = payload["data"]["id"]
         logging.info(f"Processando assinatura: {subscription_id}")
         
-        # 1. Obter detalhes completos da assinatura da API
+        # 1. Obter detalhes da assinatura - versão mais robusta
         detalhes_assinatura = obter_detalhes_assinatura(subscription_id)
+        
         if not detalhes_assinatura:
-            raise ValueError("Não foi possível obter detalhes da assinatura")
+            # Se não conseguiu pelos detalhes da API, usa os dados básicos do webhook
+            logging.warning(f"Usando dados mínimos do webhook para assinatura {subscription_id}")
+            status_assinatura = payload.get("action", "updated")  # Pega o status da ação
+            payer_id = None  # Não temos esta informação no payload básico
+            external_reference = None
+        else:
+            # Se conseguiu os detalhes completos
+            status_assinatura = detalhes_assinatura.get("status")
+            payer_id = detalhes_assinatura.get("payer_id")
+            external_reference = detalhes_assinatura.get("external_reference")
 
-        # 2. Extrair informações relevantes
-        status_assinatura = detalhes_assinatura.get("status")
-        payer_id = detalhes_assinatura.get("payer_id")  # ID do usuário no Mercado Pago
-        external_reference = detalhes_assinatura.get("external_reference")  # Se você usa para associar ao seu usuário
-
-        # 3. Determinar o ID do usuário no seu sistema
+        # 2. Obter ID do usuário - versão mais tolerante
         usuario_id = obter_usuario_id(payer_id, external_reference)
         if not usuario_id:
-            raise ValueError("Não foi possível associar a um usuário")
+            # Se não encontrou pelo método normal, tenta alternativa
+            usuario_id = obter_usuario_por_notificacao(payload)
+            if not usuario_id:
+                raise ValueError("Assinatura não pode ser associada a um usuário")
 
-        # 4. Atualizar tabela de assinaturas
+        # 3. Atualizar tabela de assinaturas - versão mais segura
         db.execute(
             text("""
                 INSERT INTO assinatura (
@@ -680,17 +689,22 @@ def processar_assinatura(payload):
                     data_atualizacao = NOW()
             """),
             {
-                "id": str(uuid.uuid4()),  # Ou use outra lógica para gerar ID
+                "id": str(uuid.uuid4()),
                 "subscription_id": subscription_id,
                 "usuario_id": usuario_id,
-                "status": status_assinatura
+                "status": status_assinatura or "active"  # Valor padrão se status for None
             }
         )
         
-        # 5. Se assinatura cancelada/expirou, atualizar status do usuário
-        if status_assinatura in ["cancelled", "expired"]:
+        # 4. Atualizar status do usuário se necessário
+        if status_assinatura in ["cancelled", "expired", "paused"]:
             db.execute(
                 text("UPDATE usuarios SET plano_ativo = false WHERE id = :usuario_id"),
+                {"usuario_id": usuario_id}
+            )
+        elif status_assinatura == "authorized":
+            db.execute(
+                text("UPDATE usuarios SET plano_ativo = true WHERE id = :usuario_id"),
                 {"usuario_id": usuario_id}
             )
         
@@ -705,13 +719,73 @@ def processar_assinatura(payload):
         
     except Exception as e:
         erro_msg = f"Erro ao processar assinatura: {str(e)}"
-        logging.error(erro_msg)
+        logging.error(erro_msg, exc_info=True)
         registrar_log(
             payload=json.dumps(payload),
             status_processamento='erro_processamento',
             mensagem_erro=erro_msg
         )
         return jsonify({"erro": str(e)}), 400
+
+
+def obter_usuario_por_notificacao(payload):
+    """Tenta alternativas para encontrar o usuário quando os métodos normais falham"""
+    try:
+        # 1. Tenta pelo application_id se estiver disponível
+        if "application_id" in payload:
+            result = db.execute(
+                text("SELECT usuario_id FROM assinatura WHERE application_id = :app_id"),
+                {"app_id": payload["application_id"]}
+            ).fetchone()
+            if result:
+                return result[0]
+        
+        # 2. Tenta pela data mais recente se subscription_id existir
+        if "data" in payload and "id" in payload["data"]:
+            result = db.execute(
+                text("SELECT usuario_id FROM assinatura WHERE subscription_id = :sub_id"),
+                {"sub_id": payload["data"]["id"]}
+            ).fetchone()
+            if result:
+                return result[0]
+        
+        return None
+    except Exception as e:
+        logging.error(f"Erro no método alternativo de busca de usuário: {str(e)}")
+        return None
+
+
+def obter_detalhes_assinatura(subscription_id):
+    """Versão mais robusta para obter detalhes da assinatura"""
+    try:
+        resposta = requests.get(
+            f"https://api.mercadopago.com/preapproval/{subscription_id}",
+            headers={
+                "Authorization": f"Bearer {os.getenv('MERCADO_PAGO_ACCESS_TOKEN')}",
+                "Content-Type": "application/json"
+            },
+            timeout=10
+        )
+        
+        # Log detalhado para debug
+        logging.info(f"Resposta da API para assinatura {subscription_id}: Status {resposta.status_code}")
+        
+        resposta.raise_for_status()
+        dados = resposta.json()
+        
+        # Verifica se os dados essenciais existem
+        if not dados.get("id"):
+            logging.error(f"Resposta da API inválida para assinatura {subscription_id}")
+            return None
+            
+        return dados
+        
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Erro na API ao buscar assinatura {subscription_id}: {str(e)}")
+        return None
+    except Exception as e:
+        logging.error(f"Erro inesperado ao processar assinatura {subscription_id}: {str(e)}")
+        return None
 
 
 def processar_pagamento(payload):
