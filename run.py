@@ -7,13 +7,14 @@ import logging
 import re
 import hmac
 import hashlib
+import uuid
 from datetime import datetime, timedelta
 from functools import wraps
 from io import BytesIO
 import base64
 import json
 
-from flask import Flask, request, render_template,render_template_string, redirect, url_for, session, jsonify, abort
+from flask import Flask, request, render_template, render_template_string, redirect, url_for, session, jsonify, abort
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -526,7 +527,6 @@ def iniciar_pagamento():
         )
         response.raise_for_status()
         
-        # Log da resposta do Mercado Pago
         logging.info(f"Resposta do Mercado Pago: {response.json()}")
         
         return redirect(response.json()["init_point"])
@@ -537,7 +537,7 @@ def iniciar_pagamento():
         return "Erro ao processar o pagamento. Tente novamente mais tarde.", 500
 
 @app.route("/webhook/mercadopago", methods=["POST"])
-@limiter.limit("100 por dia")
+@limiter.limit("100 per day")
 def mercadopago_webhook():
     try:
         # 1. Registro inicial no log
@@ -643,49 +643,80 @@ def processar_assinatura(payload):
         id_assinatura = payload["data"]["id"]
         logging.info(f"Processando assinatura: {id_assinatura}")
 
-        # CORREÇÃO: Usar db.session diretamente (igual ao registrar_log)
-        conn = db.engine.connect()  # Conexão direta que funciona
-        
-        try:
-            conn.execute(
-                text("""
-                    INSERT INTO assinatura (
-                        id, 
-                        subscription_id, 
-                        status, 
-                        data_atualizacao
-                    ) VALUES (
-                        :id, 
-                        :subscription_id, 
-                        :status, 
-                        NOW()
-                    )
-                    ON CONFLICT (subscription_id) 
-                    DO UPDATE SET 
-                        status = EXCLUDED.status,
-                        data_atualizacao = NOW()
-                """),
-                {
-                    "id": str(uuid.uuid4()),
-                    "subscription_id": id_assinatura,
-                    "status": payload.get("action", "updated")
-                }
-            )
-            conn.commit()  # Commit explícito
-            
-        finally:
-            conn.close()  # Fechamento garantido da conexão
+        # Obter detalhes da assinatura
+        resposta = requests.get(
+            f"https://api.mercadopago.com/preapproval/{id_assinatura}",
+            headers={
+                "Authorization": f"Bearer {os.getenv('MERCADO_PAGO_ACCESS_TOKEN')}",
+                "Content-Type": "application/json"
+            },
+            timeout=15
+        )
+        resposta.raise_for_status()
+        detalhes_assinatura = resposta.json()
+
+        # Extrair informações relevantes
+        status = detalhes_assinatura.get("status")
+        payer_email = detalhes_assinatura.get("payer_email")
+        external_reference = detalhes_assinatura.get("external_reference")
+        email = payer_email or external_reference
+
+        if not email:
+            raise ValueError("Email do assinante não encontrado")
+
+        # Registrar/atualizar usuário
+        usuario = db.execute(
+            text("""
+                INSERT INTO usuarios (email, plano, data_inscricao)
+                VALUES (:email, 'anual', NOW())
+                ON CONFLICT (email) 
+                DO UPDATE SET plano = 'anual'
+                RETURNING id
+            """),
+            {"email": email}
+        ).fetchone()
+        usuario_id = usuario[0]
+
+        # Registrar assinatura
+        db.execute(
+            text("""
+                INSERT INTO assinaturas (
+                    subscription_id, 
+                    usuario_id, 
+                    status, 
+                    data_atualizacao
+                ) VALUES (
+                    :subscription_id, 
+                    :usuario_id, 
+                    :status, 
+                    NOW()
+                )
+                ON CONFLICT (subscription_id) 
+                DO UPDATE SET 
+                    status = EXCLUDED.status,
+                    data_atualizacao = NOW()
+            """),
+            {
+                "subscription_id": id_assinatura,
+                "usuario_id": usuario_id,
+                "status": status
+            }
+        )
+        db.commit()
+
+        # Enviar e-mail de confirmação se a assinatura estiver ativa
+        if status == "active":
+            enviar_email_confirmacao_pagamento(email)
 
         registrar_log(
-            payload=json.dumps(payload),
+            payload=json.dumps(detalhes_assinatura),
             status_processamento='assinatura_processada',
             mensagem_erro=None
         )
         return jsonify({"status": "assinatura_processada"}), 200
         
     except Exception as e:
-        if 'conn' in locals():
-            conn.rollback()  # Rollback se a conexão existir
+        db.rollback()
         erro_msg = f"Erro ao processar assinatura: {str(e)}"
         logging.error(erro_msg)
         registrar_log(
@@ -707,10 +738,85 @@ def processar_pagamento(payload):
         if not detalhes_pagamento:
             raise ValueError("Não foi possível obter detalhes do pagamento")
         
-        # 2. Processar pagamento (sua lógica aqui)
+        # 2. Extrair informações importantes
         status = detalhes_pagamento.get("status")
         email = detalhes_pagamento.get("payer", {}).get("email")
+        external_reference = detalhes_pagamento.get("external_reference")
+        email = email or external_reference
+        valor = detalhes_pagamento.get("transaction_amount")
+        data_pagamento = detalhes_pagamento.get("date_approved")
+        nome = detalhes_pagamento.get("payer", {}).get("first_name", "Cliente")
         
+        if not email:
+            raise ValueError("Email do pagador não encontrado")
+        
+        # 3. Registrar pagamento no banco de dados
+        db.execute(
+            text("""
+                INSERT INTO pagamentos (
+                    payment_id, 
+                    status, 
+                    data_pagamento,
+                    valor,
+                    email
+                ) VALUES (
+                    :payment_id, 
+                    :status, 
+                    :data_pagamento,
+                    :valor,
+                    :email
+                )
+                ON CONFLICT (payment_id) 
+                DO UPDATE SET 
+                    status = EXCLUDED.status,
+                    data_pagamento = EXCLUDED.data_pagamento,
+                    valor = EXCLUDED.valor
+            """),
+            {
+                "payment_id": id_pagamento,
+                "status": status,
+                "data_pagamento": data_pagamento,
+                "valor": valor,
+                "email": email
+            }
+        )
+        
+        # 4. Registrar/atualizar usuário e assinatura se o pagamento for aprovado
+        if status == "approved":
+            # Registrar/atualizar usuário
+            usuario = db.execute(
+                text("""
+                    INSERT INTO usuarios (email, plano, data_inscricao)
+                    VALUES (:email, 'anual', NOW())
+                    ON CONFLICT (email) 
+                    DO UPDATE SET plano = 'anual'
+                    RETURNING id
+                """),
+                {"email": email}
+            ).fetchone()
+            usuario_id = usuario[0]
+            
+            # Registrar assinatura
+            db.execute(
+                text("""
+                    INSERT INTO assinaturas (
+                        usuario_id, 
+                        status, 
+                        data_atualizacao
+                    ) VALUES (
+                        :usuario_id, 
+                        'active', 
+                        NOW()
+                    )
+                """),
+                {"usuario_id": usuario_id}
+            )
+            
+            # Enviar e-mail de confirmação
+            enviar_email_confirmacao_pagamento(email, nome)
+        
+        db.commit()
+
         registrar_log(
             payload=json.dumps(detalhes_pagamento),
             status_processamento='pagamento_processado',
@@ -719,6 +825,7 @@ def processar_pagamento(payload):
         return jsonify({"status": "pagamento_processado"}), 200
         
     except Exception as e:
+        db.rollback()
         erro_msg = f"Erro ao processar pagamento: {str(e)}"
         logging.error(erro_msg, exc_info=True)
         registrar_log(
@@ -744,6 +851,7 @@ def obter_detalhes_pagamento(id_pagamento):
     except Exception as e:
         logging.error(f"Erro ao consultar pagamento {id_pagamento}: {str(e)}")
         return None
+
 # ================================================
 # INICIALIZAÇÃO
 # ================================================
