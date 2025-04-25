@@ -290,16 +290,37 @@ def landing():
         return render_template("landing.html")
     except Exception as e:
         logging.error(f"Erro ao renderizar landing.html: {e}")
-        return render_template_string("""
-            <!DOCTYPE html>
-            <html>
-            <body>
-                <h1>TreinoRun - Página Inicial</h1>
-                <p>Aplicação está funcionando, mas o template não foi carregado.</p>
-                <a href="/seutreino">Criar Treino</a>
-            </body>
-            </html>
-        """), 200
+        return """
+        <!DOCTYPE html>
+        <html>
+        <body>
+            <h1>TreinoRun - Página Inicial</h1>
+            <p>Aplicação está funcionando, mas o template não foi carregado.</p>
+            <a href="/seutreino">Criar Treino</a>
+        </body>
+        </html>
+        """, 200
+
+@app.route("/blog")
+@limiter.limit("100 per hour")
+def blog():
+    try:
+        return render_template("blog.html")
+    except Exception as e:
+        logging.error(f"Erro ao renderizar blog.html: {e}")
+        return """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Blog - TreinoRun</title>
+        </head>
+        <body>
+            <h1>Blog TreinoRun</h1>
+            <p>Conteúdo do blog não pôde ser carregado.</p>
+            <a href="/">Voltar para a página inicial</a>
+        </body>
+        </html>
+        """, 200
 
 @app.route("/seutreino")
 @limiter.limit("100 per hour")
@@ -308,15 +329,15 @@ def seutreino():
         return render_template("seutreino.html")
     except Exception as e:
         logging.error(f"Erro ao renderizar seutreino.html: {e}")
-        return render_template_string("""
-            <!DOCTYPE html>
-            <html>
-            <body>
-                <h1>Criar Seu Treino</h1>
-                <p>Formulário de criação de treino</p>
-            </body>
-            </html>
-        """), 200
+        return """
+        <!DOCTYPE html>
+        <html>
+        <body>
+            <h1>Criar Seu Treino</h1>
+            <p>Formulário de criação de treino</p>
+        </body>
+        </html>
+        """, 200
 
 @app.route("/sucesso")
 @limiter.limit("100 per hour")
@@ -325,16 +346,15 @@ def sucesso():
         return render_template("sucesso.html")
     except Exception as e:
         logging.error(f"Erro ao renderizar sucesso.html: {e}")
-        return render_template_string("""
-            <!DOCTYPE html>
-            <html>
-            <body>
-                <h1>Sucesso!</h1>
-                <p>Assinatura ativada com sucesso.</p>
-                <a href="/seutreino">Criar seu primeiro treino</a>
-            </body>
-            </html>
-        """), 200
+        return """
+        <!DOCTYPE html>
+        <html>
+        <body>
+            <h1>Sucesso!</h1>
+            <p>Operação concluída com sucesso.</p>
+        </body>
+        </html>
+        """, 200
 
 @app.route("/erro")
 @limiter.limit("100 per hour")
@@ -343,16 +363,32 @@ def erro():
         return render_template("erro.html")
     except Exception as e:
         logging.error(f"Erro ao renderizar erro.html: {e}")
-        return render_template_string("""
-            <!DOCTYPE html>
-            <html>
-            <body>
-                <h1>Erro no Pagamento</h1>
-                <p>Ocorreu um problema com sua assinatura.</p>
-                <a href="/seutreino">Tentar novamente</a>
-            </body>
-            </html>
-        """), 200
+        return """
+        <!DOCTYPE html>
+        <html>
+        <body>
+            <h1>Erro</h1>
+            <p>Ocorreu um erro inesperado.</p>
+        </body>
+        </html>
+        """, 200
+
+@app.route("/pendente")
+@limiter.limit("100 per hour")
+def pendente():
+    try:
+        return render_template("pendente.html")
+    except Exception as e:
+        logging.error(f"Erro ao renderizar pendente.html: {e}")
+        return """
+        <!DOCTYPE html>
+        <html>
+        <body>
+            <h1>Pagamento Pendente</h1>
+            <p>Seu pagamento está sendo processado.</p>
+        </body>
+        </html>
+        """, 200
 
 @app.route("/resultado")
 @limiter.limit("100 per hour")
@@ -372,6 +408,26 @@ def resultado():
         </body>
         </html>
         """, 200
+
+@app.route('/artigos/melhorar-pace')
+@limiter.limit("100 per hour")
+def artigo_pace():
+    return render_template('artigos/artigo-melhorar-pace.html')
+
+@app.route('/artigos/tenis-corrida')
+@limiter.limit("100 per hour")
+def artigo_tenis():
+    return render_template('artigos/artigo-tenis-corrida.html')
+
+@app.route('/artigos/alongamento')
+@limiter.limit("100 per hour")
+def artigo_alongamento():
+    return render_template('artigos/artigo-alongamento.html')
+
+@app.route('/artigos/alimentacao')
+@limiter.limit("100 per hour")
+def artigo_alimentacao():
+    return render_template('artigos/artigo-alimentacao.html')
 
 # ================================================
 # ROTAS DE ASSINATURA
