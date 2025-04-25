@@ -7,7 +7,6 @@ import logging
 import re
 import hmac
 import hashlib
-import uuid
 from datetime import datetime, timedelta
 from functools import wraps
 from io import BytesIO
@@ -56,7 +55,7 @@ app.config.update(
     TRAP_HTTP_EXCEPTIONS=True
 )
 
-# ProxyFix para Railway
+# ProxyFix para ambientes com proxy reverso
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 
 # Rate Limiter
@@ -95,21 +94,8 @@ app.config['MAIL_PASSWORD'] = os.getenv('ZOHO_PASSWORD')
 app.config['MAIL_DEFAULT_SENDER'] = ('TreinoRun', os.getenv('ZOHO_EMAIL'))
 mail = Mail(app)
 
-# ================================================
-# DECORATOR PARA ROTAS ASSÍNCRONAS
-# ================================================
-
-def async_route(f):
-    """Permite usar async/await em rotas Flask"""
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(f(*args, **kwargs))
-        finally:
-            loop.close()
-    return wrapper
+# ID do plano de assinatura no Mercado Pago
+MERCADOPAGO_PLAN_ID = "2c93808494b46ea50194bee12d88057e"
 
 # ================================================
 # FUNÇÕES AUXILIARES
@@ -133,7 +119,7 @@ def pode_gerar_plano(email, plano):
                     text("SELECT status FROM assinaturas WHERE usuario_id = :usuario_id ORDER BY id DESC LIMIT 1"),
                     {"usuario_id": usuario.id}
                 ).fetchone()
-                return assinatura and assinatura.status == "active"
+                return assinatura and assinatura.status == "authorized"
             return False
 
         elif plano == "gratuito":
@@ -243,7 +229,7 @@ def enviar_email_confirmacao_pagamento(email, nome="Cliente"):
                 </div>
                 <div class="content">
                     <p>Olá {nome},</p>
-                    <p>Seu pagamento foi processado com sucesso e seu plano anual foi ativado!</p>
+                    <p>Sua assinatura foi ativada com sucesso!</p>
                     <p>Agora você pode gerar quantos planos de treino quiser durante 1 ano.</p>
                     <p><a href="https://treinorun.com.br/seutreino" style="background-color: #27ae60; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Criar Novo Treino</a></p>
                 </div>
@@ -260,6 +246,22 @@ def enviar_email_confirmacao_pagamento(email, nome="Cliente"):
     except Exception as e:
         logging.error(f"Erro ao enviar e-mail de confirmação: {e}")
         return False
+
+def obter_detalhes_assinatura(subscription_id):
+    try:
+        response = requests.get(
+            f"https://api.mercadopago.com/preapproval/{subscription_id}",
+            headers={
+                "Authorization": f"Bearer {os.getenv('MERCADO_PAGO_ACCESS_TOKEN')}",
+                "Content-Type": "application/json"
+            },
+            timeout=15
+        )
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        logging.error(f"Erro ao obter detalhes da assinatura: {str(e)}")
+        return None
 
 # ================================================
 # ROTAS PRINCIPAIS
@@ -282,27 +284,6 @@ def landing():
             </body>
             </html>
         """), 200
-
-@app.route("/blog")
-@limiter.limit("100 per hour")
-def blog():
-    try:
-        return render_template("blog.html")
-    except Exception as e:
-        logging.error(f"Erro ao renderizar blog.html: {e}")
-        return """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Blog - TreinoRun</title>
-        </head>
-        <body>
-            <h1>Blog TreinoRun</h1>
-            <p>Conteúdo do blog não pôde ser carregado.</p>
-            <a href="/">Voltar para a página inicial</a>
-        </body>
-        </html>
-        """, 200
 
 @app.route("/seutreino")
 @limiter.limit("100 per hour")
@@ -333,26 +314,8 @@ def sucesso():
             <html>
             <body>
                 <h1>Sucesso!</h1>
-                <p>Pagamento aprovado e plano ativado com sucesso.</p>
+                <p>Assinatura ativada com sucesso.</p>
                 <a href="/seutreino">Criar seu primeiro treino</a>
-            </body>
-            </html>
-        """), 200
-
-@app.route("/pendente")
-@limiter.limit("100 per hour")
-def pendente():
-    try:
-        return render_template("pendente.html")
-    except Exception as e:
-        logging.error(f"Erro ao renderizar pendente.html: {e}")
-        return render_template_string("""
-            <!DOCTYPE html>
-            <html>
-            <body>
-                <h1>Pagamento Pendente</h1>
-                <p>Seu pagamento está sendo processado.</p>
-                <p>Você receberá um e-mail quando for confirmado.</p>
             </body>
             </html>
         """), 200
@@ -369,7 +332,7 @@ def erro():
             <html>
             <body>
                 <h1>Erro no Pagamento</h1>
-                <p>Ocorreu um problema com seu pagamento.</p>
+                <p>Ocorreu um problema com sua assinatura.</p>
                 <a href="/seutreino">Tentar novamente</a>
             </body>
             </html>
@@ -395,6 +358,181 @@ def resultado():
         """, 200
 
 # ================================================
+# ROTAS DE ASSINATURA
+# ================================================
+
+@app.route("/iniciar_assinatura", methods=["POST"])
+@limiter.limit("5 per hour")
+def iniciar_assinatura():
+    dados_usuario = request.form
+    
+    if "email" not in dados_usuario:
+        return "Email não fornecido.", 400
+
+    email = dados_usuario["email"]
+    nome = dados_usuario.get("nome", "Cliente")
+
+    try:
+        # Registrar tentativa no banco de dados
+        db.execute(
+            text("INSERT INTO tentativas_pagamento (email, data_tentativa) VALUES (:email, NOW())"),
+            {"email": email}
+        )
+        db.commit()
+    except Exception as e:
+        logging.error(f"Erro ao registrar tentativa: {e}")
+        db.rollback()
+
+    # Criar payload para assinatura
+    payload = {
+        "preapproval_plan_id": MERCADOPAGO_PLAN_ID,
+        "payer_email": email,
+        "external_reference": email,
+        "back_url": url_for("sucesso", _external=True),
+        "notification_url": url_for("mercadopago_webhook", _external=True),
+        "payer": {
+            "name": nome,
+            "email": email
+        }
+    }
+
+    try:
+        # Criar assinatura no Mercado Pago
+        response = requests.post(
+            "https://api.mercadopago.com/preapproval",
+            headers={
+                "Authorization": f"Bearer {os.getenv('MERCADO_PAGO_ACCESS_TOKEN')}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=10
+        )
+        response.raise_for_status()
+        
+        subscription_data = response.json()
+        
+        # Registrar a assinatura no banco de dados (status inicial como pending)
+        usuario = db.execute(
+            text("""
+                INSERT INTO usuarios (email, plano, data_inscricao)
+                VALUES (:email, 'anual', NOW())
+                ON CONFLICT (email) 
+                DO UPDATE SET plano = 'anual'
+                RETURNING id
+            """),
+            {"email": email}
+        ).fetchone()
+        
+        db.execute(
+            text("""
+                INSERT INTO assinaturas (
+                    subscription_id, 
+                    usuario_id, 
+                    status, 
+                    data_atualizacao
+                ) VALUES (
+                    :subscription_id, 
+                    :usuario_id, 
+                    :status, 
+                    NOW()
+                )
+            """),
+            {
+                "subscription_id": subscription_data['id'],
+                "usuario_id": usuario[0],
+                "status": "pending"
+            }
+        )
+        db.commit()
+        
+        # Redirecionar para o checkout
+        return redirect(subscription_data['init_point'])
+        
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Erro ao criar assinatura: {str(e)}")
+        if hasattr(e, 'response'):
+            logging.error(f"Resposta do Mercado Pago: {e.response.text}")
+        return "Erro ao processar a assinatura. Tente novamente mais tarde.", 500
+    except Exception as e:
+        db.rollback()
+        logging.error(f"Erro ao registrar assinatura: {str(e)}")
+        return "Erro interno ao processar sua assinatura.", 500
+
+@app.route("/webhook/mercadopago", methods=["POST"])
+@limiter.limit("100 per day")
+def mercadopago_webhook():
+    try:
+        # Verificar assinatura se necessário
+        if not validar_assinatura(request.data, request.headers.get('X-Signature', '')):
+            logging.warning("Assinatura do webhook inválida")
+            return jsonify({"error": "Assinatura inválida"}), 401
+
+        payload = request.get_json()
+        logging.info(f"Webhook recebido: {payload}")
+        
+        # Registrar log do webhook
+        db.execute(
+            text("""
+                INSERT INTO logs_webhook (
+                    data_recebimento,
+                    payload,
+                    status_processamento
+                ) VALUES (
+                    NOW(),
+                    :payload,
+                    'recebido'
+                )
+            """),
+            {"payload": json.dumps(payload)}
+        )
+        db.commit()
+        
+        # Processar notificação de assinatura
+        if payload.get("type") == "subscription_preapproval":
+            subscription_id = payload["data"]["id"]
+            subscription_data = obter_detalhes_assinatura(subscription_id)
+            
+            if not subscription_data:
+                return jsonify({"error": "Não foi possível obter detalhes da assinatura"}), 400
+            
+            email = subscription_data.get("payer_email") or subscription_data.get("external_reference")
+            status = subscription_data.get("status")
+            
+            if email and status:
+                # Atualizar banco de dados
+                usuario = db.execute(
+                    text("SELECT id FROM usuarios WHERE email = :email"),
+                    {"email": email}
+                ).fetchone()
+                
+                if usuario:
+                    db.execute(
+                        text("""
+                            UPDATE assinaturas 
+                            SET status = :status, 
+                                data_atualizacao = NOW() 
+                            WHERE subscription_id = :subscription_id
+                        """),
+                        {
+                            "status": status,
+                            "subscription_id": subscription_id
+                        }
+                    )
+                    
+                    # Se a assinatura foi autorizada, enviar e-mail
+                    if status == "authorized":
+                        enviar_email_confirmacao_pagamento(email)
+                    
+                    db.commit()
+        
+        return jsonify({"status": "success"}), 200
+        
+    except Exception as e:
+        logging.error(f"Erro no webhook: {str(e)}", exc_info=True)
+        db.rollback()
+        return jsonify({"error": str(e)}), 500
+
+# ================================================
 # ROTAS DE GERAÇÃO DE PLANOS
 # ================================================
 
@@ -413,7 +551,7 @@ async def generate():
 
     if not pode_gerar_plano(email, plano):
         if plano == "anual":
-            return redirect(url_for("iniciar_pagamento", email=email))
+            return redirect(url_for("iniciar_assinatura"))
         return "Você já gerou um plano gratuito este mês. Atualize para o plano anual para gerar mais planos.", 400
 
     semanas = calcular_semanas(dados_usuario['tempo_melhoria'])
@@ -462,395 +600,6 @@ async def generate():
         return redirect(url_for("resultado"))
     else:
         return "Erro ao registrar seu plano. Tente novamente.", 500
-
-# ================================================
-# ROTAS DE PAGAMENTO (CORRIGIDAS)
-# ================================================
-
-@app.route("/iniciar_pagamento", methods=["GET", "POST"])
-@limiter.limit("5 per hour")
-def iniciar_pagamento():
-    dados_usuario = request.form if request.method == "POST" else request.args
-
-    if "email" not in dados_usuario:
-        return "Email não fornecido.", 400
-
-    email = dados_usuario["email"]
-
-    try:
-        # Registrar tentativa de pagamento
-        db.execute(
-            text("""
-                INSERT INTO tentativas_pagamento (email, data_tentativa) 
-                VALUES (:email, NOW())
-            """),
-            {"email": email}
-        )
-        db.commit()
-    except Exception as e:
-        logging.error(f"Erro ao registrar tentativa de pagamento: {e}")
-        db.rollback()
-
-    # Criar preferência de pagamento no Mercado Pago
-    payload = {
-        "items": [{
-            "title": "Plano Anual de Treino - TreinoRun",
-            "description": "Acesso ilimitado por 1 ano à geração de planos de treino personalizados",
-            "quantity": 1,
-            "unit_price": 59.9,
-            "currency_id": "BRL",
-        }],
-        "payer": {
-            "email": email,
-            "name": dados_usuario.get("nome", "Cliente")
-        },
-        "back_urls": {
-            "success": url_for("sucesso", _external=True),
-            "failure": url_for("erro", _external=True),
-            "pending": url_for("pendente", _external=True)
-        },
-        "auto_return": "approved",
-        "notification_url": url_for("mercadopago_webhook", _external=True),
-        "external_reference": email,
-        "statement_descriptor": "TREINORUN"
-    }
-
-    try:
-        response = requests.post(
-            "https://api.mercadopago.com/checkout/preferences",
-            headers={
-                "Authorization": f"Bearer {os.getenv('MERCADO_PAGO_ACCESS_TOKEN')}",
-                "Content-Type": "application/json",
-            },
-            json=payload,
-            timeout=10
-        )
-        response.raise_for_status()
-        
-        logging.info(f"Resposta do Mercado Pago: {response.json()}")
-        
-        return redirect(response.json()["init_point"])
-    except requests.exceptions.RequestException as e:
-        logging.error(f"Erro ao criar preferência de pagamento: {str(e)}")
-        if hasattr(e, 'response') and e.response is not None:
-            logging.error(f"Resposta do Mercado Pago: {e.response.text}")
-        return "Erro ao processar o pagamento. Tente novamente mais tarde.", 500
-
-@app.route("/webhook/mercadopago", methods=["POST"])
-@limiter.limit("100 per day")
-def mercadopago_webhook():
-    try:
-        # 1. Registro inicial no log
-        logging.info(f"Webhook recebido - IP: {request.remote_addr}")
-        
-        # 2. Verificar se é uma notificação de teste
-        dados_brutos = request.data.decode('utf-8')
-        if dados_brutos == 'TEST_NOTIFICATION':
-            logging.info("Notificação de teste recebida")
-            registrar_log(
-                payload=dados_brutos,
-                status_processamento='teste',
-                mensagem_erro=None
-            )
-            return jsonify({"status": "teste_recebido"}), 200
-        
-        # 3. Processar o payload JSON
-        try:
-            payload = request.get_json()
-            if not payload:
-                raise ValueError("Payload vazio")
-        except Exception as e:
-            erro_msg = f"Payload JSON inválido: {str(e)}"
-            logging.error(erro_msg)
-            registrar_log(
-                payload=dados_brutos,
-                status_processamento='erro',
-                mensagem_erro=erro_msg
-            )
-            return jsonify({"erro": "JSON inválido"}), 400
-
-        # 4. Registrar a notificação recebida
-        registrar_log(
-            payload=json.dumps(payload),
-            status_processamento='recebido',
-            mensagem_erro=None
-        )
-
-        # 5. Processar conforme o tipo de notificação
-        tipo = payload.get("type")
-        
-        if tipo == "subscription_preapproval":
-            return processar_assinatura(payload)
-        elif tipo == "payment":
-            # Modificação para tratar o formato de pagamento
-            if "action" in payload and payload["action"] == "payment.updated":
-                payment_id = payload["data"]["id"]
-                return processar_pagamento({"data": {"id": payment_id}, "type": "payment"})
-            else:
-                return processar_pagamento(payload)
-        else:
-            msg = f"Tipo de notificação não tratado: {tipo}"
-            logging.info(msg)
-            registrar_log(
-                payload=json.dumps(payload),
-                status_processamento='ignorado',
-                mensagem_erro=msg
-            )
-            return jsonify({"status": "ignorado"}), 200
-            
-    except Exception as e:
-        erro_msg = f"Erro fatal no webhook: {str(e)}"
-        logging.error(erro_msg, exc_info=True)
-        registrar_log(
-            payload=dados_brutos if 'dados_brutos' in locals() else 'Não disponível',
-            status_processamento='erro_fatal',
-            mensagem_erro=erro_msg
-        )
-        return jsonify({"erro": "Erro interno no servidor"}), 500
-
-
-def registrar_log(payload, status_processamento, mensagem_erro=None):
-    """Registra a tentativa no banco de dados"""
-    try:
-        db.execute(
-            text("""
-                INSERT INTO logs_webhook (
-                    data_recebimento,
-                    payload,
-                    status_processamento,
-                    mensagem_erro
-                ) VALUES (
-                    NOW(),
-                    :payload,
-                    :status_processamento,
-                    :mensagem_erro
-                )
-            """),
-            {
-                "payload": payload,
-                "status_processamento": status_processamento,
-                "mensagem_erro": mensagem_erro
-            }
-        )
-        db.commit()
-    except Exception as e:
-        logging.error(f"Falha ao registrar log no BD: {str(e)}")
-        db.rollback()
-
-
-def processar_assinatura(payload):
-    try:
-        id_assinatura = payload["data"]["id"]
-        logging.info(f"Processando assinatura: {id_assinatura}")
-
-        # Obter detalhes da assinatura
-        resposta = requests.get(
-            f"https://api.mercadopago.com/preapproval/{id_assinatura}",
-            headers={
-                "Authorization": f"Bearer {os.getenv('MERCADO_PAGO_ACCESS_TOKEN')}",
-                "Content-Type": "application/json"
-            },
-            timeout=15
-        )
-        resposta.raise_for_status()
-        detalhes_assinatura = resposta.json()
-
-        # Extrair informações relevantes
-        status = detalhes_assinatura.get("status")
-        payer_email = detalhes_assinatura.get("payer_email")
-        external_reference = detalhes_assinatura.get("external_reference")
-        email = payer_email or external_reference
-
-        if not email:
-            raise ValueError("Email do assinante não encontrado")
-
-        # Registrar/atualizar usuário
-        usuario = db.execute(
-            text("""
-                INSERT INTO usuarios (email, plano, data_inscricao)
-                VALUES (:email, 'anual', NOW())
-                ON CONFLICT (email) 
-                DO UPDATE SET plano = 'anual'
-                RETURNING id
-            """),
-            {"email": email}
-        ).fetchone()
-        usuario_id = usuario[0]
-
-        # Registrar assinatura
-        db.execute(
-            text("""
-                INSERT INTO assinaturas (
-                    subscription_id, 
-                    usuario_id, 
-                    status, 
-                    data_atualizacao
-                ) VALUES (
-                    :subscription_id, 
-                    :usuario_id, 
-                    :status, 
-                    NOW()
-                )
-                ON CONFLICT (subscription_id) 
-                DO UPDATE SET 
-                    status = EXCLUDED.status,
-                    data_atualizacao = NOW()
-            """),
-            {
-                "subscription_id": id_assinatura,
-                "usuario_id": usuario_id,
-                "status": status
-            }
-        )
-        db.commit()
-
-        # Enviar e-mail de confirmação se a assinatura estiver ativa
-        if status == "active":
-            enviar_email_confirmacao_pagamento(email)
-
-        registrar_log(
-            payload=json.dumps(detalhes_assinatura),
-            status_processamento='assinatura_processada',
-            mensagem_erro=None
-        )
-        return jsonify({"status": "assinatura_processada"}), 200
-        
-    except Exception as e:
-        db.rollback()
-        erro_msg = f"Erro ao processar assinatura: {str(e)}"
-        logging.error(erro_msg)
-        registrar_log(
-            payload=json.dumps(payload),
-            status_processamento='erro_processamento',
-            mensagem_erro=erro_msg
-        )
-        return jsonify({"erro": str(e)}), 400
-
-
-def processar_pagamento(payload):
-    try:
-        id_pagamento = payload["data"]["id"]
-        logging.info(f"Processando pagamento: {id_pagamento}")
-        
-        # 1. Obter detalhes do pagamento
-        detalhes_pagamento = obter_detalhes_pagamento(id_pagamento)
-        
-        if not detalhes_pagamento:
-            raise ValueError("Não foi possível obter detalhes do pagamento")
-        
-        # 2. Extrair informações importantes
-        status = detalhes_pagamento.get("status")
-        email = detalhes_pagamento.get("payer", {}).get("email")
-        external_reference = detalhes_pagamento.get("external_reference")
-        email = email or external_reference
-        valor = detalhes_pagamento.get("transaction_amount")
-        data_pagamento = detalhes_pagamento.get("date_approved")
-        nome = detalhes_pagamento.get("payer", {}).get("first_name", "Cliente")
-        
-        if not email:
-            raise ValueError("Email do pagador não encontrado")
-        
-        # 3. Registrar pagamento no banco de dados
-        db.execute(
-            text("""
-                INSERT INTO pagamentos (
-                    payment_id, 
-                    status, 
-                    data_pagamento,
-                    valor,
-                    email
-                ) VALUES (
-                    :payment_id, 
-                    :status, 
-                    :data_pagamento,
-                    :valor,
-                    :email
-                )
-                ON CONFLICT (payment_id) 
-                DO UPDATE SET 
-                    status = EXCLUDED.status,
-                    data_pagamento = EXCLUDED.data_pagamento,
-                    valor = EXCLUDED.valor
-            """),
-            {
-                "payment_id": id_pagamento,
-                "status": status,
-                "data_pagamento": data_pagamento,
-                "valor": valor,
-                "email": email
-            }
-        )
-        
-        # 4. Registrar/atualizar usuário e assinatura se o pagamento for aprovado
-        if status == "approved":
-            # Registrar/atualizar usuário
-            usuario = db.execute(
-                text("""
-                    INSERT INTO usuarios (email, plano, data_inscricao)
-                    VALUES (:email, 'anual', NOW())
-                    ON CONFLICT (email) 
-                    DO UPDATE SET plano = 'anual'
-                    RETURNING id
-                """),
-                {"email": email}
-            ).fetchone()
-            usuario_id = usuario[0]
-            
-            # Registrar assinatura
-            db.execute(
-                text("""
-                    INSERT INTO assinaturas (
-                        usuario_id, 
-                        status, 
-                        data_atualizacao
-                    ) VALUES (
-                        :usuario_id, 
-                        'active', 
-                        NOW()
-                    )
-                """),
-                {"usuario_id": usuario_id}
-            )
-            
-            # Enviar e-mail de confirmação
-            enviar_email_confirmacao_pagamento(email, nome)
-        
-        db.commit()
-
-        registrar_log(
-            payload=json.dumps(detalhes_pagamento),
-            status_processamento='pagamento_processado',
-            mensagem_erro=None
-        )
-        return jsonify({"status": "pagamento_processado"}), 200
-        
-    except Exception as e:
-        db.rollback()
-        erro_msg = f"Erro ao processar pagamento: {str(e)}"
-        logging.error(erro_msg, exc_info=True)
-        registrar_log(
-            payload=json.dumps(payload),
-            status_processamento='erro_processamento',
-            mensagem_erro=erro_msg
-        )
-        return jsonify({"erro": str(e)}), 400
-
-
-def obter_detalhes_pagamento(id_pagamento):
-    try:
-        resposta = requests.get(
-            f"https://api.mercadopago.com/v1/payments/{id_pagamento}",
-            headers={
-                "Authorization": f"Bearer {os.getenv('MERCADO_PAGO_ACCESS_TOKEN')}",
-                "Content-Type": "application/json"
-            },
-            timeout=15
-        )
-        resposta.raise_for_status()
-        return resposta.json()
-    except Exception as e:
-        logging.error(f"Erro ao consultar pagamento {id_pagamento}: {str(e)}")
-        return None
 
 # ================================================
 # INICIALIZAÇÃO
