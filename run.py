@@ -7,6 +7,7 @@ import logging
 import re
 import hmac
 import hashlib
+import uuid
 from datetime import datetime, timedelta
 from functools import wraps
 from io import BytesIO
