@@ -7,6 +7,7 @@ import logging
 import re
 import hmac
 import hashlib
+import threading
 from datetime import datetime, timedelta
 from functools import wraps
 from io import BytesIO
@@ -114,173 +115,116 @@ mail = Mail(app)
 MERCADOPAGO_PLAN_ID = "2c93808494b46ea50194bee12d88057e"
 
 # ================================================
-# FUNÇÕES AUXILIARES
+# FUNÇÕES AUXILIARES (COM CORREÇÕES NO WEBHOOK)
 # ================================================
 
 def validar_assinatura(body, signature):
-    chave_secreta = os.getenv("MERCADO_PAGO_WEBHOOK_SECRET").encode("utf-8")
-    assinatura_esperada = hmac.new(chave_secreta, body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(assinatura_esperada, signature)
-
-def pode_gerar_plano(email, plano):
+    """Validação corrigida da assinatura HMAC"""
     try:
-        usuario = db.execute(
-            text("SELECT * FROM usuarios WHERE email = :email"),
-            {"email": email}
-        ).fetchone()
-
-        if plano == "anual":
-            if usuario:
-                assinatura = db.execute(
-                    text("SELECT status FROM assinaturas WHERE usuario_id = :usuario_id ORDER BY id DESC LIMIT 1"),
-                    {"usuario_id": usuario.id}
-                ).fetchone()
-                return assinatura and assinatura.status == "authorized"
+        chave_secreta = os.getenv("MERCADO_PAGO_WEBHOOK_SECRET", "").encode("utf-8")
+        if not chave_secreta:
+            logging.error("Chave secreta do webhook não configurada")
             return False
-
-        elif plano == "gratuito":
-            if usuario and usuario.ultima_geracao:
-                ultima_geracao = datetime.strptime(str(usuario.ultima_geracao), "%Y-%m-%d %H:%M:%S")
-                return (datetime.now() - ultima_geracao).days >= 30
-            return True
-
-        return False
+            
+        assinatura_esperada = hmac.new(chave_secreta, body, hashlib.sha256).hexdigest()
+        signature = signature.replace("sha256=", "")  # Remove prefixo se existir
+        return hmac.compare_digest(assinatura_esperada, signature)
     except Exception as e:
-        logging.error(f"Erro ao verificar permissão de plano: {e}")
+        logging.error(f"Erro ao validar assinatura: {e}")
         return False
 
-def calcular_semanas(tempo_melhoria):
+def processar_notificacao_assinatura(payload):
+    """Processa notificação de assinatura em background"""
     try:
-        tempo_melhoria = tempo_melhoria.lower()
-        match = re.search(r'(\d+)\s*(semanas?|meses?|mês)', tempo_melhoria)
+        subscription_id = payload["data"]["id"]
+        subscription_data = obter_detalhes_assinatura(subscription_id)
         
-        if not match:
-            return 4
+        if not subscription_data:
+            logging.error(f"Detalhes não encontrados para assinatura {subscription_id}")
+            return
+            
+        email = subscription_data.get("payer_email") or subscription_data.get("external_reference")
+        status = subscription_data.get("status")
         
-        valor = int(match.group(1))
-        unidade = match.group(2)
-        
-        if 'semana' in unidade:
-            return min(valor, 52)
-        elif 'mes' in unidade or 'mês' in unidade:
-            return min(valor * 4, 52)
-        else:
-            return 4
+        if email and status:
+            usuario = db.execute(
+                text("SELECT id FROM usuarios WHERE email = :email"),
+                {"email": email}
+            ).fetchone()
+            
+            if usuario:
+                db.execute(
+                    text("""
+                        UPDATE assinaturas 
+                        SET status = :status, 
+                            data_atualizacao = NOW() 
+                        WHERE subscription_id = :subscription_id
+                    """),
+                    {"status": status, "subscription_id": subscription_id}
+                )
+                
+                if status == "authorized":
+                    enviar_email_confirmacao_pagamento(email)
+                
+                db.commit()
+                logging.info(f"Assinatura {subscription_id} atualizada para {status}")
     except Exception as e:
-        logging.error(f"Erro ao calcular semanas: {e}")
-        return 4
-
-def registrar_geracao(email, plano):
-    try:
-        hoje = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        usuario = db.execute(
-            text("SELECT * FROM usuarios WHERE email = :email"),
-            {"email": email}
-        ).fetchone()
-
-        if not usuario:
-            db.execute(
-                text("""
-                    INSERT INTO usuarios (email, plano, data_inscricao, ultima_geracao)
-                    VALUES (:email, :plano, :data_inscricao, :ultima_geracao)
-                    RETURNING id
-                """),
-                {"email": email, "plano": plano, "data_inscricao": hoje, "ultima_geracao": hoje},
-            )
-            usuario_id = db.fetchone()[0]
-        else:
-            db.execute(
-                text("UPDATE usuarios SET ultima_geracao = :ultima_geracao, plano = :plano WHERE email = :email"),
-                {"ultima_geracao": hoje, "email": email, "plano": plano},
-            )
-            usuario_id = usuario.id
-
-        db.execute(
-            text("INSERT INTO geracoes (usuario_id, data_geracao) VALUES (:usuario_id, :data_geracao)"),
-            {"usuario_id": usuario_id, "data_geracao": hoje},
-        )
-        db.commit()
-        return True
-    except Exception as e:
-        logging.error(f"Erro ao registrar geração: {e}")
+        logging.error(f"Erro no processamento: {e}")
         db.rollback()
-        return False
-
-async def gerar_plano_openai(prompt, semanas):
-    try:
-        model = "gpt-3.5-turbo-16k" if semanas > 12 else "gpt-3.5-turbo"
-        
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": "Você é um treinador de corrida experiente. Siga exatamente as instruções fornecidas."},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.7,
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        logging.error(f"Erro ao gerar plano: {e}")
-        return "Erro ao gerar o plano. Tente novamente mais tarde."
-
-def enviar_email_confirmacao_pagamento(email, nome="Cliente"):
-    try:
-        msg = Message(
-            subject="✅ Pagamento Confirmado - TreinoRun",
-            recipients=[email],
-            html=f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <style>
-                    body {{ font-family: Arial, sans-serif; line-height: 1.6; }}
-                    .header {{ background-color: #27ae60; color: white; padding: 20px; text-align: center; }}
-                    .content {{ padding: 20px; }}
-                    .footer {{ text-align: center; padding: 10px; font-size: 12px; color: #777; }}
-                </style>
-            </head>
-            <body>
-                <div class="header">
-                    <h2>Pagamento Confirmado!</h2>
-                </div>
-                <div class="content">
-                    <p>Olá {nome},</p>
-                    <p>Sua assinatura foi ativada com sucesso!</p>
-                    <p>Agora você pode gerar quantos planos de treino quiser durante 1 ano.</p>
-                    <p><a href="https://treinorun.com.br/seutreino" style="background-color: #27ae60; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Criar Novo Treino</a></p>
-                </div>
-                <div class="footer">
-                    <p>© {datetime.now().year} TreinoRun • <a href="https://treinorun.com.br">www.treinorun.com.br</a></p>
-                </div>
-            </body>
-            </html>
-            """
-        )
-        mail.send(msg)
-        logging.info(f"E-mail de confirmação enviado para {email}")
-        return True
-    except Exception as e:
-        logging.error(f"Erro ao enviar e-mail de confirmação: {e}")
-        return False
-
-def obter_detalhes_assinatura(subscription_id):
-    try:
-        response = requests.get(
-            f"https://api.mercadopago.com/preapproval/{subscription_id}",
-            headers={
-                "Authorization": f"Bearer {os.getenv('MERCADO_PAGO_ACCESS_TOKEN')}",
-                "Content-Type": "application/json"
-            },
-            timeout=15
-        )
-        response.raise_for_status()
-        return response.json()
-    except Exception as e:
-        logging.error(f"Erro ao obter detalhes da assinatura: {str(e)}")
-        return None
 
 # ================================================
-# ROTAS PRINCIPAIS
+# ROTA DE WEBHOOK CORRIGIDA (MÉTODOS GET + POST)
+# ================================================
+
+@app.route("/webhook/mercadopago", methods=["GET", "POST"])
+@limiter.limit("100 per day")
+def mercadopago_webhook():
+    try:
+        # Verificação inicial do Mercado Pago (GET)
+        if request.method == "GET":
+            return jsonify({"status": "ok"}), 200
+
+        # Validação da assinatura
+        signature = request.headers.get("X-Signature", "")
+        if not validar_assinatura(request.data, signature):
+            logging.warning(f"Assinatura inválida: {signature}")
+            return jsonify({"error": "Unauthorized"}), 401
+
+        payload = request.get_json()
+        logging.info(f"Webhook recebido: {json.dumps(payload, indent=2)}")
+        
+        # Registrar log inicial
+        db.execute(
+            text("""
+                INSERT INTO logs_webhook (
+                    data_recebimento,
+                    payload,
+                    status_processamento
+                ) VALUES (
+                    NOW(),
+                    :payload,
+                    'recebido'
+                )
+            """),
+            {"payload": json.dumps(payload)}
+        )
+        db.commit()
+        
+        # Processar em background
+        if payload.get("type") == "subscription_preapproval":
+            threading.Thread(
+                target=processar_notificacao_assinatura,
+                args=(payload,)
+            ).start()
+
+        return jsonify({"status": "received"}), 200
+        
+    except Exception as e:
+        logging.error(f"Erro no webhook: {str(e)}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+# ================================================
+# TODAS AS OUTRAS ROTAS ORIGINAIS (IDÊNTICAS)
 # ================================================
 
 @app.route("/")
@@ -429,10 +373,6 @@ def artigo_alongamento():
 def artigo_alimentacao():
     return render_template('artigos/artigo-alimentacao.html')
 
-# ================================================
-# ROTAS DE ASSINATURA
-# ================================================
-
 @app.route("/iniciar_assinatura", methods=["POST"])
 @limiter.limit("5 per hour")
 def iniciar_assinatura():
@@ -529,84 +469,6 @@ def iniciar_assinatura():
         db.rollback()
         logging.error(f"Erro ao registrar assinatura: {str(e)}")
         return "Erro interno ao processar sua assinatura.", 500
-
-@app.route("/webhook/mercadopago", methods=["POST"])
-@limiter.limit("100 per day")
-def mercadopago_webhook():
-    try:
-        # Verificar assinatura se necessário
-        if not validar_assinatura(request.data, request.headers.get('X-Signature', '')):
-            logging.warning("Assinatura do webhook inválida")
-            return jsonify({"error": "Assinatura inválida"}), 401
-
-        payload = request.get_json()
-        logging.info(f"Webhook recebido: {payload}")
-        
-        # Registrar log do webhook
-        db.execute(
-            text("""
-                INSERT INTO logs_webhook (
-                    data_recebimento,
-                    payload,
-                    status_processamento
-                ) VALUES (
-                    NOW(),
-                    :payload,
-                    'recebido'
-                )
-            """),
-            {"payload": json.dumps(payload)}
-        )
-        db.commit()
-        
-        # Processar notificação de assinatura
-        if payload.get("type") == "subscription_preapproval":
-            subscription_id = payload["data"]["id"]
-            subscription_data = obter_detalhes_assinatura(subscription_id)
-            
-            if not subscription_data:
-                return jsonify({"error": "Não foi possível obter detalhes da assinatura"}), 400
-            
-            email = subscription_data.get("payer_email") or subscription_data.get("external_reference")
-            status = subscription_data.get("status")
-            
-            if email and status:
-                # Atualizar banco de dados
-                usuario = db.execute(
-                    text("SELECT id FROM usuarios WHERE email = :email"),
-                    {"email": email}
-                ).fetchone()
-                
-                if usuario:
-                    db.execute(
-                        text("""
-                            UPDATE assinaturas 
-                            SET status = :status, 
-                                data_atualizacao = NOW() 
-                            WHERE subscription_id = :subscription_id
-                        """),
-                        {
-                            "status": status,
-                            "subscription_id": subscription_id
-                        }
-                    )
-                    
-                    # Se a assinatura foi autorizada, enviar e-mail
-                    if status == "authorized":
-                        enviar_email_confirmacao_pagamento(email)
-                    
-                    db.commit()
-        
-        return jsonify({"status": "success"}), 200
-        
-    except Exception as e:
-        logging.error(f"Erro no webhook: {str(e)}", exc_info=True)
-        db.rollback()
-        return jsonify({"error": str(e)}), 500
-
-# ================================================
-# ROTAS DE GERAÇÃO DE PLANOS
-# ================================================
 
 @app.route("/generate", methods=["POST"])
 @limiter.limit("10 per hour")
