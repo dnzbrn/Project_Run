@@ -736,30 +736,46 @@ def processar_pagamento(payload):
         id_pagamento = payload.get("data", {}).get("id")
 
         if not id_pagamento:
-            # Se não tem ID de pagamento, provavelmente é um webhook de teste ou inválido
-            logging.info("Webhook de pagamento recebido sem ID de pagamento. Considerando como teste.")
-
+            logging.info("Webhook de pagamento sem ID recebido. Considerando como teste.")
             registrar_log(
                 payload=json.dumps(payload),
                 status_processamento='pagamento_teste_sem_id',
                 mensagem_erro="ID de pagamento ausente"
             )
-
             return jsonify({"status": "pagamento_teste_sem_id_recebido"}), 200
 
-        # 3. Se é teste (live_mode: false), apenas simula
         if is_test:
-            logging.info("Recebido pagamento de teste do Mercado Pago com ID simulado.")
+            # ⚡ TESTE: Simula pagamento sem consultar Mercado Pago
+            logging.info(f"Recebido pagamento de teste com ID {id_pagamento} (não consultando API Mercado Pago)")
+
+            status = "approved"  # Simula aprovado
+            email = "teste@exemplo.com"  # Simula um email
+
+            # Simula inserção no banco
+            with engine.begin() as conn:
+                conn.execute(
+                    text("""
+                        INSERT INTO pagamentos (payment_id, status, data_pagamento)
+                        VALUES (:payment_id, :status, NOW())
+                        ON CONFLICT (payment_id) DO UPDATE
+                        SET status = EXCLUDED.status,
+                            data_pagamento = NOW()
+                    """),
+                    {
+                        "payment_id": id_pagamento,
+                        "status": status
+                    }
+                )
 
             registrar_log(
                 payload=json.dumps(payload),
-                status_processamento='pagamento_teste',
+                status_processamento='pagamento_teste_processado',
                 mensagem_erro=None
             )
 
-            return jsonify({"status": "pagamento_teste_recebido"}), 200
+            return jsonify({"status": "pagamento_teste_processado"}), 200
 
-        # 4. Se não for teste, processamento real
+        # ⚡ Se não for teste: pega detalhes reais
         logging.info(f"Processando pagamento real: {id_pagamento}")
 
         detalhes_pagamento = obter_detalhes_pagamento(id_pagamento)
@@ -772,7 +788,7 @@ def processar_pagamento(payload):
         if not email:
             raise ValueError("Email não encontrado no pagamento")
 
-        # Insere ou atualiza pagamento no banco
+        # ⚡ Atualiza pagamento real
         with engine.begin() as conn:
             conn.execute(
                 text("""
@@ -788,7 +804,7 @@ def processar_pagamento(payload):
                 }
             )
 
-        # Atualiza usuário se aprovado
+        # ⚡ Atualiza usuário se aprovado
         if status == "approved":
             with engine.begin() as conn:
                 conn.execute(
@@ -819,6 +835,7 @@ def processar_pagamento(payload):
             mensagem_erro=erro_msg
         )
         return jsonify({"erro": str(e)}), 400
+
 
 
 def obter_detalhes_pagamento(id_pagamento):
