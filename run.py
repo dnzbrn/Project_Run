@@ -537,15 +537,15 @@ def iniciar_pagamento():
         return "Erro ao processar o pagamento. Tente novamente mais tarde.", 500
 
 @app.route("/webhook/mercadopago", methods=["POST"])
-@limiter.limit("100 por dia")
+@limiter.limit("100 per day")
 def mercadopago_webhook():
     try:
         # 1. Registro inicial no log
         logging.info(f"Webhook recebido - IP: {request.remote_addr}")
-        
+
         # 2. Verificar se é uma notificação de teste
         dados_brutos = request.data.decode('utf-8')
-        if dados_brutos == 'TEST_NOTIFICATION':
+        if dados_brutos.strip() == 'TEST_NOTIFICATION':
             logging.info("Notificação de teste recebida")
             registrar_log(
                 payload=dados_brutos,
@@ -553,10 +553,10 @@ def mercadopago_webhook():
                 mensagem_erro=None
             )
             return jsonify({"status": "teste_recebido"}), 200
-        
+
         # 3. Processar o payload JSON
         try:
-            payload = request.get_json()
+            payload = request.get_json(force=True)  # << FORÇAR pegar o JSON
             if not payload:
                 raise ValueError("Payload vazio")
         except Exception as e:
@@ -578,16 +578,25 @@ def mercadopago_webhook():
 
         # 5. Processar conforme o tipo de notificação
         tipo = payload.get("type")
-        
+        action = payload.get("action", "")
+
         if tipo == "subscription_preapproval":
             return processar_assinatura(payload)
+
         elif tipo == "payment":
-            # Modificação para tratar o formato de pagamento
-            if "action" in payload and payload["action"] == "payment.updated":
-                payment_id = payload["data"]["id"]
-                return processar_pagamento({"data": {"id": payment_id}, "type": "payment"})
-            else:
-                return processar_pagamento(payload)
+            payment_id = payload.get("data", {}).get("id")
+            if not payment_id:
+                erro_msg = "ID do pagamento não encontrado no payload."
+                logging.error(erro_msg)
+                registrar_log(
+                    payload=json.dumps(payload),
+                    status_processamento='erro',
+                    mensagem_erro=erro_msg
+                )
+                return jsonify({"erro": "ID do pagamento não encontrado"}), 400
+
+            return processar_pagamento({"data": {"id": payment_id}, "type": "payment"})
+
         else:
             msg = f"Tipo de notificação não tratado: {tipo}"
             logging.info(msg)
@@ -597,7 +606,7 @@ def mercadopago_webhook():
                 mensagem_erro=msg
             )
             return jsonify({"status": "ignorado"}), 200
-            
+
     except Exception as e:
         erro_msg = f"Erro fatal no webhook: {str(e)}"
         logging.error(erro_msg, exc_info=True)
@@ -607,6 +616,7 @@ def mercadopago_webhook():
             mensagem_erro=erro_msg
         )
         return jsonify({"erro": "Erro interno no servidor"}), 500
+
 
 
 def registrar_log(payload, status_processamento, mensagem_erro=None):
@@ -700,29 +710,67 @@ def processar_pagamento(payload):
     try:
         id_pagamento = payload["data"]["id"]
         logging.info(f"Processando pagamento: {id_pagamento}")
-        
-        # 1. Obter detalhes do pagamento
+
+        # Buscar detalhes do pagamento no Mercado Pago
         detalhes_pagamento = obter_detalhes_pagamento(id_pagamento)
-        
+
         if not detalhes_pagamento:
             raise ValueError("Não foi possível obter detalhes do pagamento")
-        
-        # 2. Processar pagamento (sua lógica aqui)
+
         status = detalhes_pagamento.get("status")
         email = detalhes_pagamento.get("payer", {}).get("email")
-        
+
+        if not email:
+            raise ValueError("E-mail do pagador não encontrado no pagamento")
+
+        if status == "approved":
+            logging.info(f"Pagamento aprovado para {email}")
+
+            # Atualizar o usuário para plano anual
+            hoje = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            usuario = db.execute(
+                text("SELECT * FROM usuarios WHERE email = :email"),
+                {"email": email}
+            ).fetchone()
+
+            if usuario:
+                db.execute(
+                    text("""
+                        UPDATE usuarios
+                        SET plano = 'anual', ultima_geracao = :hoje
+                        WHERE email = :email
+                    """),
+                    {"hoje": hoje, "email": email}
+                )
+            else:
+                db.execute(
+                    text("""
+                        INSERT INTO usuarios (email, plano, data_inscricao, ultima_geracao)
+                        VALUES (:email, 'anual', :hoje, :hoje)
+                    """),
+                    {"email": email, "hoje": hoje}
+                )
+            db.commit()
+
+            # Enviar e-mail de confirmação
+            enviar_email_confirmacao_pagamento(email)
+
+        else:
+            logging.warning(f"Pagamento {id_pagamento} para {email} não aprovado. Status: {status}")
+
+        # Registrar o log do processamento
         registrar_log(
             payload=json.dumps(detalhes_pagamento),
             status_processamento='pagamento_processado',
             mensagem_erro=None
         )
         return jsonify({"status": "pagamento_processado"}), 200
-        
+
     except Exception as e:
         erro_msg = f"Erro ao processar pagamento: {str(e)}"
         logging.error(erro_msg, exc_info=True)
         registrar_log(
-            payload=json.dumps(payload),
+            payload=json.dumps(payload) if 'payload' in locals() else 'Não disponível',
             status_processamento='erro_processamento',
             mensagem_erro=erro_msg
         )
