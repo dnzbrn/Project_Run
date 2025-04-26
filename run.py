@@ -134,30 +134,62 @@ MERCADOPAGO_PLAN_ID = "2c93808494b46ea50194bee12d88057e"
 # ================================================
 
 def validar_assinatura(body, signature):
+    """
+    Valida assinatura de webhooks do Mercado Pago com proteções adicionais.
+    
+    Args:
+        body (bytes): Corpo bruto da requisição HTTP
+        signature (str): Valor do header X-Signature
+        
+    Returns:
+        bool: True se assinatura válida, False caso contrário
+    """
     try:
-        # 1. Extrai a parte v1= da assinatura (novo formato MP)
-        if "v1=" in signature:
-            signature = signature.split("v1=")[1].split(",")[0]
+        # 1. Verificação preliminar
+        if not signature:
+            logging.error("🛑 Falha crítica: Header X-Signature ausente")
+            return False
+
+        # 2. Extração segura da assinatura (suporta múltiplos formatos)
+        signature_value = None
+        if "v1=" in signature:  # Formato novo (ts=...,v1=...)
+            parts = signature.split("v1=")
+            if len(parts) > 1:
+                signature_value = parts[1].split(",")[0].strip()
+        else:  # Formato antigo (sha256=...)
+            signature_value = signature.replace("sha256=", "").strip()
         
-        # 2. Remove possíveis prefixos residuais
-        signature = signature.replace("sha256=", "").strip()
-        
-        # 3. Validação HMAC
+        if not signature_value:
+            logging.error("⚠️ Formato de assinatura inválido")
+            return False
+
+        # 3. Obtenção segura da chave
         chave_secreta = os.getenv("MERCADO_PAGO_WEBHOOK_SECRET", "").encode('utf-8')
         if not chave_secreta:
-            logging.error("❌ Chave secreta não configurada")
+            logging.error("🔐 Erro: Chave secreta não configurada")
             return False
-            
-        assinatura_calculada = hmac.new(chave_secreta, body, hashlib.sha256).hexdigest()
-        
-        # 4. Logs para diagnóstico
-        logging.info(f"🔑 Assinatura recebida: {signature}")
-        logging.info(f"🔑 Assinatura calculada: {assinatura_calculada}")
-        
-        return hmac.compare_digest(assinatura_calculada, signature)
+
+        # 4. Cálculo da assinatura com proteção adicional
+        try:
+            assinatura_calculada = hmac.new(
+                chave_secreta,
+                msg=body,
+                digestmod=hashlib.sha256
+            ).hexdigest()
+        except Exception as crypto_error:
+            logging.error(f"🧨 Erro criptográfico: {str(crypto_error)}")
+            return False
+
+        # 5. Logs seguros (não expõe dados completos)
+        logging.debug(f"🔍 Assinatura (recebida): {signature_value[:6]}...[truncado]")
+        logging.debug(f"🔍 Assinatura (calculada): {assinatura_calculada[:6]}...[truncado]")
+        logging.debug(f"📦 Hash do body: {hashlib.sha256(body).hexdigest()}")
+
+        # 6. Comparação segura contra timing attacks
+        return hmac.compare_digest(assinatura_calculada, signature_value)
         
     except Exception as e:
-        logging.error(f"💥 Erro na validação: {str(e)}")
+        logging.error(f"💣 Erro inesperado: {str(e)}", exc_info=True)
         return False
 
 def processar_notificacao_assinatura(payload):
