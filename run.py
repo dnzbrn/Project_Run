@@ -176,10 +176,3 @@ def processar_notificacao_assinatura(payload):
 
 # Outras rotas (landing, blog, etc.) aqui você já tem.
 
-# ================================================
-# INICIALIZAÇÃO
-# ================================================
-
-if __name__ == "__main__":
-    from waitress import serve
-    serve(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)), threads=4)
