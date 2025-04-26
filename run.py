@@ -691,7 +691,7 @@ def processar_assinatura(payload):
                 # PRODUÇÃO: salva assinatura real
                 conn.execute(
                     text("""
-                        INSERT INTO assinatura (
+                        INSERT INTO assinaturas (
                             id, 
                             subscription_id, 
                             status, 
