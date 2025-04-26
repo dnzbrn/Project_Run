@@ -239,10 +239,37 @@ def mercadopago_webhook():
             logging.info("✅ Validação inicial do webhook (GET)")
             return jsonify({"status": "ok"}), 200
 
-        # 3. Verificação especial para simulação de webhook de teste do Mercado Pago
+        # 3. Parse prévio do payload para teste
         try:
             payload_preview = json.loads(raw_data.decode('utf-8'))
             if payload_preview.get("id") == "123456":
+                # 💾 Logar notificação de teste no banco
+                try:
+                    db.execute(
+                        text("""
+                            INSERT INTO logs_webhook (
+                                data_recebimento,
+                                payload,
+                                status_processamento,
+                                mensagem_erro
+                            ) VALUES (
+                                NOW(),
+                                :payload,
+                                :status_processamento,
+                                NULL
+                            )
+                        """),
+                        {
+                            "payload": json.dumps(payload_preview),
+                            "status_processamento": "teste"
+                        }
+                    )
+                    db.commit()
+                    logging.info("✅ Log de teste registrado no banco de dados")
+                except Exception as e:
+                    db.rollback()
+                    logging.error(f"⚠️ Erro ao registrar log de teste: {str(e)}")
+
                 logging.warning("🚨 Webhook de TESTE do Mercado Pago detectado. Ignorando assinatura.")
                 return jsonify({"status": "test notification received"}), 200
         except Exception as e:
@@ -261,21 +288,26 @@ def mercadopago_webhook():
             logging.error(f"❌ JSON inválido: {str(e)}")
             return jsonify({"error": "Invalid payload"}), 400
 
-        # 6. Registro no banco de dados (com commit explícito)
+        # 6. Registro no banco de dados (COM todas as colunas!)
         try:
             db.execute(
                 text("""
                     INSERT INTO logs_webhook (
                         data_recebimento,
                         payload,
-                        status_processamento
+                        status_processamento,
+                        mensagem_erro
                     ) VALUES (
                         NOW(),
                         :payload,
-                        'recebido'
+                        :status_processamento,
+                        NULL
                     )
                 """),
-                {"payload": json.dumps(payload)}
+                {
+                    "payload": json.dumps(payload),
+                    "status_processamento": "recebido"
+                }
             )
             db.commit()
             logging.info("✅ Log registrado no banco de dados")
@@ -298,6 +330,7 @@ def mercadopago_webhook():
         logging.error(f"💥 Erro crítico: {str(e)}", exc_info=True)
         db.rollback()
         return jsonify({"error": "Internal server error"}), 500
+
 
 # ================================================
 # TODAS AS OUTRAS ROTAS ORIGINAIS (IDÊNTICAS)
