@@ -729,23 +729,37 @@ def obter_detalhes_assinatura(subscription_id):
 
 def processar_pagamento(payload):
     try:
-        # Verificar se é um evento de teste
+        # 1. Verificar se é um evento de teste
         is_test = not payload.get("live_mode", True)
 
-        if is_test:
-            # Trata notificação de teste sem tentar consultar o pagamento
-            logging.info("Recebido pagamento de teste do Mercado Pago.")
+        # 2. Pegar ID do pagamento (de forma segura)
+        id_pagamento = payload.get("data", {}).get("id")
+
+        if not id_pagamento:
+            # Se não tem ID de pagamento, provavelmente é um webhook de teste ou inválido
+            logging.info("Webhook de pagamento recebido sem ID de pagamento. Considerando como teste.")
 
             registrar_log(
                 payload=json.dumps(payload),
-                status_processamento='teste_pagamento',
+                status_processamento='pagamento_teste_sem_id',
+                mensagem_erro="ID de pagamento ausente"
+            )
+
+            return jsonify({"status": "pagamento_teste_sem_id_recebido"}), 200
+
+        # 3. Se é teste (live_mode: false), apenas simula
+        if is_test:
+            logging.info("Recebido pagamento de teste do Mercado Pago com ID simulado.")
+
+            registrar_log(
+                payload=json.dumps(payload),
+                status_processamento='pagamento_teste',
                 mensagem_erro=None
             )
 
             return jsonify({"status": "pagamento_teste_recebido"}), 200
 
-        # Se não for teste, processo real
-        id_pagamento = payload["data"]["id"]
+        # 4. Se não for teste, processamento real
         logging.info(f"Processando pagamento real: {id_pagamento}")
 
         detalhes_pagamento = obter_detalhes_pagamento(id_pagamento)
@@ -758,7 +772,7 @@ def processar_pagamento(payload):
         if not email:
             raise ValueError("Email não encontrado no pagamento")
 
-        # Insere ou atualiza o pagamento real
+        # Insere ou atualiza pagamento no banco
         with engine.begin() as conn:
             conn.execute(
                 text("""
@@ -774,7 +788,7 @@ def processar_pagamento(payload):
                 }
             )
 
-        # Se aprovado, atualiza o usuário
+        # Atualiza usuário se aprovado
         if status == "approved":
             with engine.begin() as conn:
                 conn.execute(
@@ -805,10 +819,6 @@ def processar_pagamento(payload):
             mensagem_erro=erro_msg
         )
         return jsonify({"erro": str(e)}), 400
-
-
-
-
 
 
 def obter_detalhes_pagamento(id_pagamento):
