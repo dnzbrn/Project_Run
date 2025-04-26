@@ -62,13 +62,10 @@ def log_request_info():
 
 @app.before_request
 def preprocess_webhook():
-    try:
-        if request.path == "/webhook/mercadopago":
-            # Garante que o body seja lido como bytes puro
-            request.raw_data = request.get_data()
-    except Exception as e:
-        logging.error(f"Erro no preprocessamento do webhook: {str(e)}")
-        # Não interrompe o fluxo mesmo em caso de erro
+    if request.path == "/webhook/mercadopago":
+        # Garante que o body seja lido como bytes puro
+        request.raw_data = request.get_data()
+        request.json = None  # Força reparse posterior
 
 
 # Configurações de segurança
