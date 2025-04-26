@@ -176,7 +176,7 @@ def registrar_geracao(email, plano):
         ).fetchone()
 
         if not usuario:
-            db.execute(
+            result = db.execute(
                 text("""
                     INSERT INTO usuarios (email, plano, data_inscricao, ultima_geracao)
                     VALUES (:email, :plano, :data_inscricao, :ultima_geracao)
@@ -184,7 +184,7 @@ def registrar_geracao(email, plano):
                 """),
                 {"email": email, "plano": plano, "data_inscricao": hoje, "ultima_geracao": hoje},
             )
-            usuario_id = db.fetchone()[0]
+            usuario_id = result.fetchone()[0]
         else:
             db.execute(
                 text("UPDATE usuarios SET ultima_geracao = :ultima_geracao, plano = :plano WHERE email = :email"),

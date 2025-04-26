@@ -226,7 +226,7 @@
         <li>Treinos personalizados</li>
         <li>Suporte prioritário</li>
       </ul>
-      <form id="formAssinarAnual" action="/iniciar_assinatura" method="POST">
+      <form id="formAssinarAnual" action="/iniciar_pagamento" method="POST">
         <input type="hidden" name="plano" value="anual">
         <input type="email" name="email" placeholder="Digite seu e-mail" class="w-full mt-4 p-2 rounded-lg border-gray-300 shadow-sm focus:ring-blue-600 focus:border-blue-600" required>
         <button type="submit" class="mt-6 w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-blue-700 transition">
@@ -400,3 +400,48 @@
     form.submit();
   }
 </script>
+
+
+<!-- NOVO SCRIPT DO MENU AQUI -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const menuButton = document.getElementById('menuButton');
+  const sideMenu = document.getElementById('sideMenu');
+  
+  function toggleMenu() {
+    if (sideMenu.classList.contains('-translate-x-full')) {
+      sideMenu.classList.remove('-translate-x-full');
+      sideMenu.classList.add('translate-x-0');
+    } else {
+      sideMenu.classList.remove('translate-x-0');
+      sideMenu.classList.add('-translate-x-full');
+    }
+  }
+
+  menuButton.addEventListener('click', function(event) {
+    event.stopPropagation();
+    toggleMenu();
+  });
+
+  document.addEventListener('click', function(event) {
+    if (!sideMenu.contains(event.target) && !menuButton.contains(event.target)) {
+      if (!sideMenu.classList.contains('-translate-x-full')) {
+        sideMenu.classList.remove('translate-x-0');
+        sideMenu.classList.add('-translate-x-full');
+      }
+    }
+  });
+
+  document.addEventListener('keydown', function(event) {
+    if (event.key === "Escape") {
+      if (!sideMenu.classList.contains('-translate-x-full')) {
+        sideMenu.classList.remove('translate-x-0');
+        sideMenu.classList.add('-translate-x-full');
+      }
+    }
+  });
+});
+</script>
+
+</body>
+</html>
