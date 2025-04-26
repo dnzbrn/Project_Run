@@ -745,54 +745,50 @@ def processar_pagamento(payload):
         id_pagamento = payload["data"]["id"]
         logging.info(f"Processando pagamento: {id_pagamento}")
 
-        # Buscar detalhes do pagamento no Mercado Pago
         detalhes_pagamento = obter_detalhes_pagamento(id_pagamento)
 
         if not detalhes_pagamento:
             raise ValueError("Não foi possível obter detalhes do pagamento")
 
+        # Extrair informações importantes
         status = detalhes_pagamento.get("status")
         email = detalhes_pagamento.get("payer", {}).get("email")
 
         if not email:
-            raise ValueError("E-mail do pagador não encontrado no pagamento")
+            raise ValueError("Email não encontrado no pagamento")
 
+        # Registrar o pagamento na tabela 'pagamentos'
+        with engine.begin() as conn:
+            conn.execute(
+                text("""
+                    INSERT INTO pagamentos (payment_id, email, status, data_atualizacao)
+                    VALUES (:payment_id, :email, :status, NOW())
+                    ON CONFLICT (payment_id) DO UPDATE
+                    SET status = EXCLUDED.status,
+                        data_atualizacao = NOW()
+                """),
+                {
+                    "payment_id": id_pagamento,
+                    "email": email,
+                    "status": status,
+                }
+            )
+
+        # ⚡ Se o pagamento foi aprovado, atualiza o usuário
         if status == "approved":
-            logging.info(f"Pagamento aprovado para {email}")
-
-            # Atualizar o usuário para plano anual
-            hoje = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            usuario = db.execute(
-                text("SELECT * FROM usuarios WHERE email = :email"),
-                {"email": email}
-            ).fetchone()
-
-            if usuario:
-                db.execute(
+            with engine.begin() as conn:
+                conn.execute(
                     text("""
                         UPDATE usuarios
-                        SET plano = 'anual', ultima_geracao = :hoje
+                        SET plano = 'anual',
+                            data_inscricao = NOW()
                         WHERE email = :email
                     """),
-                    {"hoje": hoje, "email": email}
+                    {"email": email}
                 )
-            else:
-                db.execute(
-                    text("""
-                        INSERT INTO usuarios (email, plano, data_inscricao, ultima_geracao)
-                        VALUES (:email, 'anual', :hoje, :hoje)
-                    """),
-                    {"email": email, "hoje": hoje}
-                )
-            db.commit()
-
-            # Enviar e-mail de confirmação
+            # (opcional) enviar e-mail de confirmação para o usuário
             enviar_email_confirmacao_pagamento(email)
 
-        else:
-            logging.warning(f"Pagamento {id_pagamento} para {email} não aprovado. Status: {status}")
-
-        # Registrar o log do processamento
         registrar_log(
             payload=json.dumps(detalhes_pagamento),
             status_processamento='pagamento_processado',
@@ -804,7 +800,7 @@ def processar_pagamento(payload):
         erro_msg = f"Erro ao processar pagamento: {str(e)}"
         logging.error(erro_msg, exc_info=True)
         registrar_log(
-            payload=json.dumps(payload) if 'payload' in locals() else 'Não disponível',
+            payload=json.dumps(payload),
             status_processamento='erro_processamento',
             mensagem_erro=erro_msg
         )
