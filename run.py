@@ -39,6 +39,14 @@ logging.basicConfig(
     ]
 )
 
+
+
+basedir = os.path.abspath(os.path.dirname(__file__))
+template_dir = os.path.join(basedir, 'Templates')
+
+app = Flask(__name__, template_folder=template_dir)
+app.secret_key = os.getenv("FLASK_SECRET_KEY", os.urandom(24).hex())
+
 # ----------------------------------------------
 # MIDDLEWARE PARA LOGS 
 # ----------------------------------------------
@@ -51,11 +59,6 @@ def log_request_info():
         except Exception as e:
             logging.error(f"Erro ao logar requisição: {str(e)}")
 
-basedir = os.path.abspath(os.path.dirname(__file__))
-template_dir = os.path.join(basedir, 'Templates')
-
-app = Flask(__name__, template_folder=template_dir)
-app.secret_key = os.getenv("FLASK_SECRET_KEY", os.urandom(24).hex())
 
 # Configurações de segurança
 app.config.update(
