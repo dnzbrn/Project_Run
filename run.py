@@ -217,6 +217,27 @@ def processar_notificacao_assinatura(payload):
         logging.error(f"Erro no processamento: {e}")
         db.rollback()
 
+def obter_detalhes_assinatura(subscription_id):
+    """Busca os detalhes da assinatura no Mercado Pago."""
+    try:
+        url = f"https://api.mercadopago.com/preapproval/{subscription_id}"
+        headers = {
+            "Authorization": f"Bearer {os.getenv('MERCADO_PAGO_ACCESS_TOKEN')}",
+            "Content-Type": "application/json"
+        }
+
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()  # Lança erro automático se não for 200 OK
+
+        assinatura = response.json()
+        logging.info(f"📄 Detalhes da assinatura {subscription_id} recebidos.")
+        return assinatura
+
+    except requests.exceptions.RequestException as e:
+        logging.error(f"⚠️ Erro ao obter detalhes da assinatura {subscription_id}: {str(e)}")
+        return None
+
+
 # ================================================
 # ROTA DE WEBHOOK CORRIGIDA (MÉTODOS GET + POST)
 # ================================================
