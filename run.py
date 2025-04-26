@@ -729,30 +729,36 @@ def obter_detalhes_assinatura(subscription_id):
 
 def processar_pagamento(payload):
     try:
-        id_pagamento = payload["data"]["id"]
-        logging.info(f"Processando pagamento: {id_pagamento}")
-
-        # Verifica se é uma notificação de teste
+        # Verificar se é um evento de teste
         is_test = not payload.get("live_mode", True)
 
         if is_test:
-            # Simula dados de pagamento para teste
-            status = "approved"
-            email = "teste@exemplo.com"  # Apenas para teste
-            logging.info("Processando notificação de pagamento em modo de teste.")
-        else:
-            # Busca os detalhes reais do pagamento
-            detalhes_pagamento = obter_detalhes_pagamento(id_pagamento)
-            if not detalhes_pagamento:
-                raise ValueError("Não foi possível obter detalhes do pagamento")
+            # Trata notificação de teste sem tentar consultar o pagamento
+            logging.info("Recebido pagamento de teste do Mercado Pago.")
 
-            status = detalhes_pagamento.get("status")
-            email = detalhes_pagamento.get("payer", {}).get("email")
+            registrar_log(
+                payload=json.dumps(payload),
+                status_processamento='teste_pagamento',
+                mensagem_erro=None
+            )
 
-            if not email:
-                raise ValueError("Email não encontrado no pagamento")
+            return jsonify({"status": "pagamento_teste_recebido"}), 200
 
-        # ⚡ Insere ou atualiza o pagamento
+        # Se não for teste, processo real
+        id_pagamento = payload["data"]["id"]
+        logging.info(f"Processando pagamento real: {id_pagamento}")
+
+        detalhes_pagamento = obter_detalhes_pagamento(id_pagamento)
+        if not detalhes_pagamento:
+            raise ValueError("Não foi possível obter detalhes do pagamento")
+
+        status = detalhes_pagamento.get("status")
+        email = detalhes_pagamento.get("payer", {}).get("email")
+
+        if not email:
+            raise ValueError("Email não encontrado no pagamento")
+
+        # Insere ou atualiza o pagamento real
         with engine.begin() as conn:
             conn.execute(
                 text("""
@@ -768,8 +774,8 @@ def processar_pagamento(payload):
                 }
             )
 
-        # ⚡ Se aprovado e não for apenas teste, atualiza o usuário
-        if status == "approved" and not is_test:
+        # Se aprovado, atualiza o usuário
+        if status == "approved":
             with engine.begin() as conn:
                 conn.execute(
                     text("""
@@ -783,10 +789,11 @@ def processar_pagamento(payload):
             enviar_email_confirmacao_pagamento(email)
 
         registrar_log(
-            payload=json.dumps(payload),
+            payload=json.dumps(detalhes_pagamento),
             status_processamento='pagamento_processado',
             mensagem_erro=None
         )
+
         return jsonify({"status": "pagamento_processado"}), 200
 
     except Exception as e:
@@ -798,6 +805,7 @@ def processar_pagamento(payload):
             mensagem_erro=erro_msg
         )
         return jsonify({"erro": str(e)}), 400
+
 
 
 
