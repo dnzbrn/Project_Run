@@ -732,27 +732,25 @@ def processar_pagamento(payload):
         id_pagamento = payload["data"]["id"]
         logging.info(f"Processando pagamento: {id_pagamento}")
 
-        # ⚡ Novo: Verifica se é ambiente de teste (live_mode == False)
-        if payload.get("live_mode") is False:
-            logging.info("Notificação de teste recebida para pagamento. Simulando processamento.")
-            registrar_log(
-                payload=json.dumps(payload),
-                status_processamento='pagamento_teste_simulado',
-                mensagem_erro=None
-            )
-            return jsonify({"status": "pagamento_teste_simulado"}), 200
+        # Verifica se é uma notificação de teste
+        is_test = not payload.get("live_mode", True)
 
-        # Se for real, buscar detalhes no Mercado Pago
-        detalhes_pagamento = obter_detalhes_pagamento(id_pagamento)
+        if is_test:
+            # Simula dados de pagamento para teste
+            status = "approved"
+            email = "teste@exemplo.com"  # Apenas para teste
+            logging.info("Processando notificação de pagamento em modo de teste.")
+        else:
+            # Busca os detalhes reais do pagamento
+            detalhes_pagamento = obter_detalhes_pagamento(id_pagamento)
+            if not detalhes_pagamento:
+                raise ValueError("Não foi possível obter detalhes do pagamento")
 
-        if not detalhes_pagamento:
-            raise ValueError("Não foi possível obter detalhes do pagamento")
+            status = detalhes_pagamento.get("status")
+            email = detalhes_pagamento.get("payer", {}).get("email")
 
-        status = detalhes_pagamento.get("status")
-        email = detalhes_pagamento.get("payer", {}).get("email")
-
-        if not email:
-            raise ValueError("Email não encontrado no pagamento")
+            if not email:
+                raise ValueError("Email não encontrado no pagamento")
 
         # ⚡ Insere ou atualiza o pagamento
         with engine.begin() as conn:
@@ -770,8 +768,8 @@ def processar_pagamento(payload):
                 }
             )
 
-        # ⚡ Se aprovado, atualiza o usuário
-        if status == "approved":
+        # ⚡ Se aprovado e não for apenas teste, atualiza o usuário
+        if status == "approved" and not is_test:
             with engine.begin() as conn:
                 conn.execute(
                     text("""
@@ -785,7 +783,7 @@ def processar_pagamento(payload):
             enviar_email_confirmacao_pagamento(email)
 
         registrar_log(
-            payload=json.dumps(detalhes_pagamento),
+            payload=json.dumps(payload),
             status_processamento='pagamento_processado',
             mensagem_erro=None
         )
@@ -800,6 +798,7 @@ def processar_pagamento(payload):
             mensagem_erro=erro_msg
         )
         return jsonify({"erro": str(e)}), 400
+
 
 
 
