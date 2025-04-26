@@ -119,18 +119,23 @@ MERCADOPAGO_PLAN_ID = "2c93808494b46ea50194bee12d88057e"
 # ================================================
 
 def validar_assinatura(body, signature):
-    """Validação corrigida da assinatura HMAC"""
     try:
-        chave_secreta = os.getenv("MERCADO_PAGO_WEBHOOK_SECRET", "").encode("utf-8")
+        chave_secreta = os.getenv("MERCADO_PAGO_WEBHOOK_SECRET", "").encode('utf-8')
         if not chave_secreta:
-            logging.error("Chave secreta do webhook não configurada")
+            logging.error("Chave secreta não configurada")
             return False
-            
-        assinatura_esperada = hmac.new(chave_secreta, body, hashlib.sha256).hexdigest()
-        signature = signature.replace("sha256=", "")  # Remove prefixo se existir
-        return hmac.compare_digest(assinatura_esperada, signature)
+
+        # Extrai apenas o valor v1=... da assinatura (novo formato do Mercado Pago)
+        if "v1=" in signature:
+            signature = signature.split("v1=")[1].split(",")[0]
+        
+        # Gera a assinatura esperada
+        assinatura_calculada = hmac.new(chave_secreta, body, hashlib.sha256).hexdigest()
+        
+        return hmac.compare_digest(assinatura_calculada, signature)
+        
     except Exception as e:
-        logging.error(f"Erro ao validar assinatura: {e}")
+        logging.error(f"Erro na validação: {str(e)}")
         return False
 
 def processar_notificacao_assinatura(payload):
@@ -179,6 +184,7 @@ def processar_notificacao_assinatura(payload):
 @app.route("/webhook/mercadopago", methods=["GET", "POST"])
 @limiter.limit("100 per day")
 def mercadopago_webhook():
+    logging.info(f"Headers recebidos: {dict(request.headers)}")  # ← Adicione esta linha
     try:
         # Verificação inicial do Mercado Pago (GET)
         if request.method == "GET":
