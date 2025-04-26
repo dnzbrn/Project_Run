@@ -39,6 +39,18 @@ logging.basicConfig(
     ]
 )
 
+# ----------------------------------------------
+# MIDDLEWARE PARA LOGS 
+# ----------------------------------------------
+@app.before_request
+def log_request_info():
+    if request.path == "/webhook/mercadopago":
+        try:
+            logging.info(f"\n📨 Headers recebidos:\n{json.dumps(dict(request.headers), indent=2)}")
+            logging.info(f"📦 Body recebido:\n{request.data.decode('utf-8', errors='replace')}")
+        except Exception as e:
+            logging.error(f"Erro ao logar requisição: {str(e)}")
+
 basedir = os.path.abspath(os.path.dirname(__file__))
 template_dir = os.path.join(basedir, 'Templates')
 
@@ -120,22 +132,29 @@ MERCADOPAGO_PLAN_ID = "2c93808494b46ea50194bee12d88057e"
 
 def validar_assinatura(body, signature):
     try:
-        chave_secreta = os.getenv("MERCADO_PAGO_WEBHOOK_SECRET", "").encode('utf-8')
-        if not chave_secreta:
-            logging.error("Chave secreta não configurada")
-            return False
-
-        # Extrai apenas o valor v1=... da assinatura (novo formato do Mercado Pago)
+        # 1. Extrai a parte v1= da assinatura (novo formato MP)
         if "v1=" in signature:
             signature = signature.split("v1=")[1].split(",")[0]
         
-        # Gera a assinatura esperada
+        # 2. Remove possíveis prefixos residuais
+        signature = signature.replace("sha256=", "").strip()
+        
+        # 3. Validação HMAC
+        chave_secreta = os.getenv("MERCADO_PAGO_WEBHOOK_SECRET", "").encode('utf-8')
+        if not chave_secreta:
+            logging.error("❌ Chave secreta não configurada")
+            return False
+            
         assinatura_calculada = hmac.new(chave_secreta, body, hashlib.sha256).hexdigest()
+        
+        # 4. Logs para diagnóstico
+        logging.info(f"🔑 Assinatura recebida: {signature}")
+        logging.info(f"🔑 Assinatura calculada: {assinatura_calculada}")
         
         return hmac.compare_digest(assinatura_calculada, signature)
         
     except Exception as e:
-        logging.error(f"Erro na validação: {str(e)}")
+        logging.error(f"💥 Erro na validação: {str(e)}")
         return False
 
 def processar_notificacao_assinatura(payload):
