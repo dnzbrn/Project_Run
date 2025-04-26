@@ -653,38 +653,71 @@ def processar_assinatura(payload):
         id_assinatura = payload["data"]["id"]
         logging.info(f"Processando assinatura: {id_assinatura}")
 
-        # CORREÇÃO: Usar db.session diretamente (igual ao registrar_log)
-        conn = db.engine.connect()  # Conexão direta que funciona
-        
+        # Detectar se é ambiente de teste (live_mode = False)
+        is_teste = not payload.get("live_mode", True)
+
+        conn = engine.connect()  # Correto: engine.connect()
+
         try:
-            conn.execute(
-                text("""
-                    INSERT INTO assinatura (
-                        id, 
-                        subscription_id, 
-                        status, 
-                        data_atualizacao
-                    ) VALUES (
-                        :id, 
-                        :subscription_id, 
-                        :status, 
-                        NOW()
-                    )
-                    ON CONFLICT (subscription_id) 
-                    DO UPDATE SET 
-                        status = EXCLUDED.status,
-                        data_atualizacao = NOW()
-                """),
-                {
-                    "id": str(uuid.uuid4()),
-                    "subscription_id": id_assinatura,
-                    "status": payload.get("action", "updated")
-                }
-            )
-            conn.commit()  # Commit explícito
-            
+            if is_teste:
+                # TESTE: apenas registra o teste no banco (sem alterar usuários de verdade)
+                conn.execute(
+                    text("""
+                        INSERT INTO assinatura_testes (
+                            id, 
+                            subscription_id, 
+                            status, 
+                            data_teste
+                        ) VALUES (
+                            :id, 
+                            :subscription_id, 
+                            :status, 
+                            NOW()
+                        )
+                        ON CONFLICT (subscription_id) 
+                        DO UPDATE SET 
+                            status = EXCLUDED.status,
+                            data_teste = NOW()
+                    """),
+                    {
+                        "id": str(uuid.uuid4()),
+                        "subscription_id": id_assinatura,
+                        "status": payload.get("action", "test_updated")
+                    }
+                )
+                logging.info(f"Assinatura de teste {id_assinatura} registrada.")
+            else:
+                # PRODUÇÃO: salva assinatura real
+                conn.execute(
+                    text("""
+                        INSERT INTO assinatura (
+                            id, 
+                            subscription_id, 
+                            status, 
+                            data_atualizacao
+                        ) VALUES (
+                            :id, 
+                            :subscription_id, 
+                            :status, 
+                            NOW()
+                        )
+                        ON CONFLICT (subscription_id) 
+                        DO UPDATE SET 
+                            status = EXCLUDED.status,
+                            data_atualizacao = NOW()
+                    """),
+                    {
+                        "id": str(uuid.uuid4()),
+                        "subscription_id": id_assinatura,
+                        "status": payload.get("action", "updated")
+                    }
+                )
+                logging.info(f"Assinatura real {id_assinatura} registrada.")
+
+            conn.commit()
+
         finally:
-            conn.close()  # Fechamento garantido da conexão
+            conn.close()
 
         registrar_log(
             payload=json.dumps(payload),
@@ -692,14 +725,14 @@ def processar_assinatura(payload):
             mensagem_erro=None
         )
         return jsonify({"status": "assinatura_processada"}), 200
-        
+
     except Exception as e:
         if 'conn' in locals():
-            conn.rollback()  # Rollback se a conexão existir
+            conn.rollback()
         erro_msg = f"Erro ao processar assinatura: {str(e)}"
-        logging.error(erro_msg)
+        logging.error(erro_msg, exc_info=True)
         registrar_log(
-            payload=json.dumps(payload),
+            payload=json.dumps(payload) if 'payload' in locals() else 'Não disponível',
             status_processamento='erro_processamento',
             mensagem_erro=erro_msg
         )
