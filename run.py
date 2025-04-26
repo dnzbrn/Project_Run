@@ -60,12 +60,6 @@ def log_request_info():
             logging.error(f"Erro ao logar requisição: {str(e)}")
 
 
-@app.before_request
-def preprocess_webhook():
-    if request.path == "/webhook/mercadopago":
-        # Garante que o body seja lido como bytes puro
-        request.raw_data = request.get_data()
-        request.json = None  # Força reparse posterior
 
 
 # Configurações de segurança
@@ -231,34 +225,29 @@ def processar_notificacao_assinatura(payload):
 @limiter.limit("100 per day")
 def mercadopago_webhook():
     try:
-        # 1. Pré-processamento (middleware já garantiu request.raw_data)
-        body = getattr(request, 'raw_data', request.data)
+        # 1. Obter dados diretamente (sem pré-processamento)
+        raw_data = request.get_data()
         signature = request.headers.get("X-Signature", "")
         
-        # 2. Verificação inicial (GET)
+        # 2. Verificação GET
         if request.method == "GET":
-            logging.info("✅ Validação inicial do webhook (GET)")
+            logging.info("✅ Validação inicial do webhook")
             return jsonify({"status": "ok"}), 200
 
-        # 3. Logs detalhados (seguros)
-        logging.info(f"🔍 Headers recebidos: { {k: v for k, v in request.headers.items() if k != 'X-Signature'} }")
-        logging.info(f"📦 Tamanho do body: {len(body)} bytes")
-        logging.info(f"🔑 Assinatura (truncada): {signature[:15]}...")
-
-        # 4. Validação da assinatura
-        if not validar_assinatura(body, signature):
-            logging.error("🚨 Falha na validação da assinatura")
+        # 3. Validação da assinatura COM DADOS CRUS
+        if not validar_assinatura(raw_data, signature):
+            logging.error("🚨 Assinatura inválida")
             return jsonify({"error": "Unauthorized"}), 401
 
-        # 5. Processamento do payload
+        # 4. Parse do JSON somente após validação
         try:
-            payload = json.loads(body.decode('utf-8'))
-            logging.debug(f"📄 Payload recebido: {json.dumps(payload, indent=2)[:200]}...")
+            payload = json.loads(raw_data.decode('utf-8'))
+            logging.info(f"📄 Payload recebido: {json.dumps(payload, indent=2)[:500]}...")
         except Exception as e:
-            logging.error(f"❌ Erro ao decodificar JSON: {str(e)}")
+            logging.error(f"❌ JSON inválido: {str(e)}")
             return jsonify({"error": "Invalid payload"}), 400
 
-        # 6. Registro no banco de dados
+        # 5. Registro no banco de dados (COM COMMIT EXPLÍCITO)
         try:
             db.execute(
                 text("""
@@ -274,23 +263,27 @@ def mercadopago_webhook():
                 """),
                 {"payload": json.dumps(payload)}
             )
-            db.commit()
+            db.commit()  # Commit explícito aqui
+            logging.info("✅ Log registrado no banco de dados")
         except Exception as e:
-            logging.error(f"⚠️ Erro ao registrar log: {str(e)}")
             db.rollback()
+            logging.error(f"⚠️ Erro ao registrar log: {str(e)}")
+            # Não retorne erro aqui para não interromper o fluxo
 
-        # 7. Processamento em background
+        # 6. Processamento em background
         if payload.get("type") == "subscription_preapproval":
             threading.Thread(
                 target=processar_notificacao_assinatura,
                 args=(payload,),
                 daemon=True
             ).start()
+            logging.info("📦 Notificação de assinatura encaminhada para background")
 
         return jsonify({"status": "received"}), 200
         
     except Exception as e:
         logging.error(f"💥 Erro crítico: {str(e)}", exc_info=True)
+        db.rollback()  # Garanta rollback em caso de erro
         return jsonify({"error": "Internal server error"}), 500
 # ================================================
 # TODAS AS OUTRAS ROTAS ORIGINAIS (IDÊNTICAS)
