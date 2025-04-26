@@ -60,6 +60,15 @@ def log_request_info():
             logging.error(f"Erro ao logar requisição: {str(e)}")
 
 
+
+@app.before_request
+def preprocess_webhook():
+    if request.path == "/webhook/mercadopago":
+        # Garante que o body seja lido como bytes puro
+        request.raw_data = request.get_data()
+        request.json = None  # Força reparse posterior
+
+
 # Configurações de segurança
 app.config.update(
     SESSION_COOKIE_SECURE=True,
@@ -134,40 +143,46 @@ MERCADOPAGO_PLAN_ID = "2c93808494b46ea50194bee12d88057e"
 # ================================================
 
 def validar_assinatura(body, signature):
-    """Valida assinatura com tratamento robusto do body"""
+    """Validação segura com reconstrução do body original"""
     try:
-        # Debug: Verifique o body recebido
-        logging.info(f"📦 Body bruto (hex): {body.hex()[:20]}...")  # Log seguro
-        
-        # Extração da assinatura
+        # 1. Decodificação segura do body
+        try:
+            body_str = body.decode('utf-8')
+            # Reconstroi o JSON para garantir formato consistente
+            body_data = json.loads(body_str) if body_str.strip() else {}
+            body_normalizado = json.dumps(body_data, separators=(',', ':')).encode('utf-8')
+        except Exception as e:
+            logging.error(f"⚠️ Erro ao processar body: {str(e)}")
+            return False
+
+        # 2. Extração da assinatura
         signature_value = (
             signature.split("v1=")[1].split(",")[0] 
             if "v1=" in signature 
             else signature.replace("sha256=", "")
         ).strip()
 
-        # Obtenha a chave do ambiente
+        # 3. Cálculo da assinatura com body normalizado
         chave_secreta = os.getenv("MERCADO_PAGO_WEBHOOK_SECRET", "").encode('utf-8')
         if not chave_secreta:
-            logging.error("❌ Chave secreta não configurada")
+            logging.error("🔒 Erro: Chave secreta não configurada")
             return False
 
-        # Verificação especial para body vazio
-        if not body:
-            logging.warning("⚠️ Body vazio recebido")
-            body = b"{}"  # Padroniza body vazio
+        assinatura_calculada = hmac.new(
+            chave_secreta,
+            body_normalizado,
+            hashlib.sha256
+        ).hexdigest()
 
-        # Cálculo da assinatura
-        assinatura_calculada = hmac.new(chave_secreta, body, hashlib.sha256).hexdigest()
-        
-        # Debug detalhado
-        logging.info(f"🔑 Assinatura esperada: {assinatura_calculada}")
-        logging.info(f"📩 Assinatura recebida: {signature_value}")
-        
+        # 4. Logs de diagnóstico (seguros)
+        logging.info(f"📦 Body normalizado (hash): {hashlib.sha256(body_normalizado).hexdigest()}")
+        logging.info(f"🔑 Assinatura (calc): {assinatura_calculada[:8]}...")
+        logging.info(f"🔑 Assinatura (recv): {signature_value[:8]}...")
+
         return hmac.compare_digest(assinatura_calculada, signature_value)
 
     except Exception as e:
-        logging.error(f"💥 Erro na validação: {str(e)}", exc_info=True)
+        logging.error(f"💥 Falha crítica: {str(e)}", exc_info=True)
         return False
 
 def processar_notificacao_assinatura(payload):
@@ -216,51 +231,68 @@ def processar_notificacao_assinatura(payload):
 @app.route("/webhook/mercadopago", methods=["GET", "POST"])
 @limiter.limit("100 per day")
 def mercadopago_webhook():
-    logging.info(f"Headers recebidos: {dict(request.headers)}")  # ← Adicione esta linha
     try:
-        # Verificação inicial do Mercado Pago (GET)
+        # 1. Pré-processamento (middleware já garantiu request.raw_data)
+        body = getattr(request, 'raw_data', request.data)
+        signature = request.headers.get("X-Signature", "")
+        
+        # 2. Verificação inicial (GET)
         if request.method == "GET":
+            logging.info("✅ Validação inicial do webhook (GET)")
             return jsonify({"status": "ok"}), 200
 
-        # Validação da assinatura
-        signature = request.headers.get("X-Signature", "")
-        if not validar_assinatura(request.data, signature):
-            logging.warning(f"Assinatura inválida: {signature}")
+        # 3. Logs detalhados (seguros)
+        logging.info(f"🔍 Headers recebidos: { {k: v for k, v in request.headers.items() if k != 'X-Signature'} }")
+        logging.info(f"📦 Tamanho do body: {len(body)} bytes")
+        logging.info(f"🔑 Assinatura (truncada): {signature[:15]}...")
+
+        # 4. Validação da assinatura
+        if not validar_assinatura(body, signature):
+            logging.error("🚨 Falha na validação da assinatura")
             return jsonify({"error": "Unauthorized"}), 401
 
-        payload = request.get_json()
-        logging.info(f"Webhook recebido: {json.dumps(payload, indent=2)}")
-        
-        # Registrar log inicial
-        db.execute(
-            text("""
-                INSERT INTO logs_webhook (
-                    data_recebimento,
-                    payload,
-                    status_processamento
-                ) VALUES (
-                    NOW(),
-                    :payload,
-                    'recebido'
-                )
-            """),
-            {"payload": json.dumps(payload)}
-        )
-        db.commit()
-        
-        # Processar em background
+        # 5. Processamento do payload
+        try:
+            payload = json.loads(body.decode('utf-8'))
+            logging.debug(f"📄 Payload recebido: {json.dumps(payload, indent=2)[:200]}...")
+        except Exception as e:
+            logging.error(f"❌ Erro ao decodificar JSON: {str(e)}")
+            return jsonify({"error": "Invalid payload"}), 400
+
+        # 6. Registro no banco de dados
+        try:
+            db.execute(
+                text("""
+                    INSERT INTO logs_webhook (
+                        data_recebimento,
+                        payload,
+                        status_processamento
+                    ) VALUES (
+                        NOW(),
+                        :payload,
+                        'recebido'
+                    )
+                """),
+                {"payload": json.dumps(payload)}
+            )
+            db.commit()
+        except Exception as e:
+            logging.error(f"⚠️ Erro ao registrar log: {str(e)}")
+            db.rollback()
+
+        # 7. Processamento em background
         if payload.get("type") == "subscription_preapproval":
             threading.Thread(
                 target=processar_notificacao_assinatura,
-                args=(payload,)
+                args=(payload,),
+                daemon=True
             ).start()
 
         return jsonify({"status": "received"}), 200
         
     except Exception as e:
-        logging.error(f"Erro no webhook: {str(e)}", exc_info=True)
-        return jsonify({"error": str(e)}), 500
-
+        logging.error(f"💥 Erro crítico: {str(e)}", exc_info=True)
+        return jsonify({"error": "Internal server error"}), 500
 # ================================================
 # TODAS AS OUTRAS ROTAS ORIGINAIS (IDÊNTICAS)
 # ================================================
