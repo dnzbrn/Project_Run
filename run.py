@@ -732,6 +732,17 @@ def processar_pagamento(payload):
         id_pagamento = payload["data"]["id"]
         logging.info(f"Processando pagamento: {id_pagamento}")
 
+        # ⚡ Novo: Verifica se é ambiente de teste (live_mode == False)
+        if payload.get("live_mode") is False:
+            logging.info("Notificação de teste recebida para pagamento. Simulando processamento.")
+            registrar_log(
+                payload=json.dumps(payload),
+                status_processamento='pagamento_teste_simulado',
+                mensagem_erro=None
+            )
+            return jsonify({"status": "pagamento_teste_simulado"}), 200
+
+        # Se for real, buscar detalhes no Mercado Pago
         detalhes_pagamento = obter_detalhes_pagamento(id_pagamento)
 
         if not detalhes_pagamento:
@@ -789,6 +800,7 @@ def processar_pagamento(payload):
             mensagem_erro=erro_msg
         )
         return jsonify({"erro": str(e)}), 400
+
 
 
 
