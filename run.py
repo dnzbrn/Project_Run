@@ -654,71 +654,45 @@ def processar_assinatura(payload):
         id_assinatura = payload["data"]["id"]
         logging.info(f"Processando assinatura: {id_assinatura}")
 
-        # Detectar se é ambiente de teste (live_mode = False)
-        is_teste = not payload.get("live_mode", True)
+        status = payload.get("action", "updated")
+        
+        # Testes do Mercado Pago às vezes não enviam email, então tratamos separado
+        email = None
+        if payload.get("test", False):
+            logging.info("Notificação de teste recebida, não atualizando usuários.")
+        else:
+            # Aqui você poderia buscar o e-mail em outro serviço se necessário.
+            email = payload.get("payer_email")  # depende se seu sistema envia
+        
+        # ⚡ Inserir ou atualizar a assinatura
+        with engine.begin() as conn:
+            conn.execute(
+                text("""
+                    INSERT INTO assinaturas (subscription_id, status, data_atualizacao)
+                    VALUES (:subscription_id, :status, NOW())
+                    ON CONFLICT (subscription_id) DO UPDATE
+                    SET status = EXCLUDED.status,
+                        data_atualizacao = NOW()
+                """),
+                {
+                    "subscription_id": id_assinatura,
+                    "status": status
+                }
+            )
 
-        conn = engine.connect()  # Correto: engine.connect()
-
-        try:
-            if is_teste:
-                # TESTE: apenas registra o teste no banco (sem alterar usuários de verdade)
+        # ⚡ Se for uma notificação real e tiver email, atualiza o usuário
+        if email:
+            with engine.begin() as conn:
                 conn.execute(
                     text("""
-                        INSERT INTO assinatura_testes (
-                            id, 
-                            subscription_id, 
-                            status, 
-                            data_teste
-                        ) VALUES (
-                            :id, 
-                            :subscription_id, 
-                            :status, 
-                            NOW()
-                        )
-                        ON CONFLICT (subscription_id) 
-                        DO UPDATE SET 
-                            status = EXCLUDED.status,
-                            data_teste = NOW()
+                        UPDATE usuarios
+                        SET plano = 'anual',
+                            data_inscricao = NOW()
+                        WHERE email = :email
                     """),
-                    {
-                        "id": str(uuid.uuid4()),
-                        "subscription_id": id_assinatura,
-                        "status": payload.get("action", "test_updated")
-                    }
+                    {"email": email}
                 )
-                logging.info(f"Assinatura de teste {id_assinatura} registrada.")
-            else:
-                # PRODUÇÃO: salva assinatura real
-                conn.execute(
-                    text("""
-                        INSERT INTO assinaturas (
-                            id, 
-                            subscription_id, 
-                            status, 
-                            data_atualizacao
-                        ) VALUES (
-                            :id, 
-                            :subscription_id, 
-                            :status, 
-                            NOW()
-                        )
-                        ON CONFLICT (subscription_id) 
-                        DO UPDATE SET 
-                            status = EXCLUDED.status,
-                            data_atualizacao = NOW()
-                    """),
-                    {
-                        "id": str(uuid.uuid4()),
-                        "subscription_id": id_assinatura,
-                        "status": payload.get("action", "updated")
-                    }
-                )
-                logging.info(f"Assinatura real {id_assinatura} registrada.")
-
-            conn.commit()
-
-        finally:
-            conn.close()
+            enviar_email_confirmacao_pagamento(email)
 
         registrar_log(
             payload=json.dumps(payload),
@@ -728,17 +702,30 @@ def processar_assinatura(payload):
         return jsonify({"status": "assinatura_processada"}), 200
 
     except Exception as e:
-        if 'conn' in locals():
-            conn.rollback()
         erro_msg = f"Erro ao processar assinatura: {str(e)}"
         logging.error(erro_msg, exc_info=True)
         registrar_log(
-            payload=json.dumps(payload) if 'payload' in locals() else 'Não disponível',
+            payload=json.dumps(payload),
             status_processamento='erro_processamento',
             mensagem_erro=erro_msg
         )
         return jsonify({"erro": str(e)}), 400
 
+def obter_detalhes_assinatura(subscription_id):
+    try:
+        resposta = requests.get(
+            f"https://api.mercadopago.com/preapproval/{subscription_id}",
+            headers={
+                "Authorization": f"Bearer {os.getenv('MERCADO_PAGO_ACCESS_TOKEN')}",
+                "Content-Type": "application/json"
+            },
+            timeout=15
+        )
+        resposta.raise_for_status()
+        return resposta.json()
+    except Exception as e:
+        logging.error(f"Erro ao consultar assinatura {subscription_id}: {str(e)}")
+        return None
 
 def processar_pagamento(payload):
     try:
@@ -750,31 +737,29 @@ def processar_pagamento(payload):
         if not detalhes_pagamento:
             raise ValueError("Não foi possível obter detalhes do pagamento")
 
-        # Extrair informações importantes
         status = detalhes_pagamento.get("status")
         email = detalhes_pagamento.get("payer", {}).get("email")
 
         if not email:
             raise ValueError("Email não encontrado no pagamento")
 
-        # Registrar o pagamento na tabela 'pagamentos'
+        # ⚡ Insere ou atualiza o pagamento
         with engine.begin() as conn:
             conn.execute(
                 text("""
-                    INSERT INTO pagamentos (payment_id, email, status, data_atualizacao)
-                    VALUES (:payment_id, :email, :status, NOW())
+                    INSERT INTO pagamentos (payment_id, status, data_pagamento)
+                    VALUES (:payment_id, :status, NOW())
                     ON CONFLICT (payment_id) DO UPDATE
                     SET status = EXCLUDED.status,
-                        data_atualizacao = NOW()
+                        data_pagamento = NOW()
                 """),
                 {
                     "payment_id": id_pagamento,
-                    "email": email,
-                    "status": status,
+                    "status": status
                 }
             )
 
-        # ⚡ Se o pagamento foi aprovado, atualiza o usuário
+        # ⚡ Se aprovado, atualiza o usuário
         if status == "approved":
             with engine.begin() as conn:
                 conn.execute(
@@ -786,7 +771,6 @@ def processar_pagamento(payload):
                     """),
                     {"email": email}
                 )
-            # (opcional) enviar e-mail de confirmação para o usuário
             enviar_email_confirmacao_pagamento(email)
 
         registrar_log(
@@ -805,6 +789,7 @@ def processar_pagamento(payload):
             mensagem_erro=erro_msg
         )
         return jsonify({"erro": str(e)}), 400
+
 
 
 def obter_detalhes_pagamento(id_pagamento):
