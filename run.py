@@ -37,6 +37,7 @@ basedir = os.path.abspath(os.path.dirname(__file__))
 template_dir = os.path.join(basedir, 'Templates')
 
 app = Flask(__name__, template_folder=template_dir)
+app.debug = True
 app.secret_key = os.getenv("FLASK_SECRET_KEY", os.urandom(24).hex())
 
 app.config.update(
