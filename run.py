@@ -544,7 +544,7 @@ def mercadopago_webhook():
         # 1. Registro inicial no log
         logging.info(f"Webhook recebido - IP: {request.remote_addr}")
 
-        # 2. Verificar se é uma notificação de teste
+        # 2. Verificar se é uma notificação de teste simples
         dados_brutos = request.data.decode('utf-8')
         if dados_brutos.strip() == 'TEST_NOTIFICATION':
             logging.info("Notificação de teste recebida")
@@ -557,7 +557,7 @@ def mercadopago_webhook():
 
         # 3. Processar o payload JSON
         try:
-            payload = request.get_json(force=True)  # << FORÇAR pegar o JSON
+            payload = request.get_json(force=True)  # Força pegar o JSON mesmo sem header correto
             if not payload:
                 raise ValueError("Payload vazio")
         except Exception as e:
@@ -570,14 +570,14 @@ def mercadopago_webhook():
             )
             return jsonify({"erro": "JSON inválido"}), 400
 
-        # 4. Registrar a notificação recebida
+        # 4. Registrar o payload recebido
         registrar_log(
             payload=json.dumps(payload),
             status_processamento='recebido',
             mensagem_erro=None
         )
 
-        # 5. Processar conforme o tipo de notificação
+        # 5. Identificar e processar conforme o tipo
         tipo = payload.get("type")
         action = payload.get("action", "")
 
@@ -596,7 +596,7 @@ def mercadopago_webhook():
                 )
                 return jsonify({"erro": "ID do pagamento não encontrado"}), 400
 
-            return processar_pagamento({"data": {"id": payment_id}, "type": "payment"})
+            return processar_pagamento(payload)  # AQUI corrigido: envia payload inteiro
 
         else:
             msg = f"Tipo de notificação não tratado: {tipo}"
@@ -617,7 +617,6 @@ def mercadopago_webhook():
             mensagem_erro=erro_msg
         )
         return jsonify({"erro": "Erro interno no servidor"}), 500
-
 
 
 def registrar_log(payload, status_processamento, mensagem_erro=None):
