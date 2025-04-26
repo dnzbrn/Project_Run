@@ -228,6 +228,11 @@ def mercadopago_webhook():
         # 1. Obter dados diretamente (sem pré-processamento)
         raw_data = request.get_data()
         signature = request.headers.get("X-Signature", "")
+
+      # 🚨 Proteção contra body vazio
+        if not raw_data:
+            logging.error("🚨 Body vazio recebido. Ignorando request.")
+            return jsonify({"error": "Empty body"}), 400
         
         # 2. Verificação GET
         if request.method == "GET":
