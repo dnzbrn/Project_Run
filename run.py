@@ -553,6 +553,77 @@ Importante:
         return "Erro ao registrar seu plano. Tente novamente.", 500
 
 
+@app.route("/send_plan_email", methods=["POST"])
+@limiter.limit("10 per minute")
+def send_plan_email():
+    try:
+        data = request.get_json()
+
+        email_destino = data.get("email")
+        pdf_data_uri = data.get("pdfData")
+
+        if not email_destino or not pdf_data_uri:
+            return jsonify({"message": "Dados incompletos"}), 400
+
+        # Extrair título do treino salvo na sessão
+        titulo_treino = session.get("titulo", "Seu Plano de Treino")
+
+        # Determinar se é treino de Pace ou Corrida
+        if "pace" in titulo_treino.lower():
+            descricao = "Seu plano personalizado para melhorar seu pace!"
+        elif "corrida" in titulo_treino.lower() or "correr" in titulo_treino.lower():
+            descricao = "Seu plano personalizado para sua corrida!"
+        else:
+            descricao = "Seu treino personalizado está pronto!"
+
+        # Converter base64 para bytes
+        header, encoded = pdf_data_uri.split(",", 1)
+        pdf_bytes = base64.b64decode(encoded)
+
+        # Criar mensagem HTML com cores da landing (verde e azul)
+        corpo_html = f"""
+        <!DOCTYPE html>
+        <html lang="pt-BR">
+        <body style="font-family: Arial, sans-serif; background-color: #f0fdf4; padding: 20px;">
+          <div style="background-color: #ffffff; padding: 30px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); max-width: 600px; margin: auto;">
+            <h2 style="color: #22c55e; text-align: center;">🏃‍♂️ {titulo_treino}</h2>
+            <p style="text-align: center; font-size: 18px; color: #374151;">{descricao}</p>
+            <p style="margin-top: 20px; font-size: 16px; color: #4b5563;">Segue em anexo o seu plano de treino, feito especialmente para você atingir seus objetivos.</p>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="https://treinorun.com.br/seutreino" style="background-color: #3b82f6; color: #ffffff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">Criar Novo Treino</a>
+            </div>
+            <p style="font-size: 14px; color: #9ca3af; text-align: center;">Bons treinos!<br>Equipe TreinoRun</p>
+          </div>
+        </body>
+        </html>
+        """
+
+        # Criar e-mail
+        msg = Message(
+            subject=f"🏃 {titulo_treino} - TreinoRun",
+            recipients=[email_destino],
+            html=corpo_html,
+        )
+
+        # Anexar o PDF
+        msg.attach(
+            filename=f"Plano_Treino_{datetime.now().strftime('%Y%m%d')}.pdf",
+            content_type="application/pdf",
+            data=pdf_bytes
+        )
+
+        # Enviar
+        mail.send(msg)
+
+        logging.info(f"E-mail de treino enviado para {email_destino}")
+        return jsonify({"message": "E-mail enviado com sucesso"}), 200
+
+    except Exception as e:
+        logging.error(f"Erro ao enviar treino por e-mail: {str(e)}", exc_info=True)
+        return jsonify({"message": "Erro interno ao enviar e-mail"}), 500
+
+
+
 
 # ================================================
 # ROTAS DE PAGAMENTO (CORRIGIDAS)
