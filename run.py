@@ -459,37 +459,46 @@ async def generate():
         estilo_treino = "treinos intervalados intensos, tempo runs e longões progressivos."
 
     # Construir o prompt
-    prompt = f"""
+    prompt = prompt = f"""
 Você é um treinador de corrida experiente.
 
-Crie um plano de corrida personalizado para que o usuário atinja: {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']}.
+Crie um plano de corrida personalizado para o usuário atingir o objetivo: {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']}.
 
-⚡ Detalhes:
+⚡ Informações do usuário:
 - Nível: {dados_usuario['nivel']}
-- Estilo de treino: {estilo_treino}
-- Dias por semana: {dados_usuario['dias']}
-- Duração por treino: {dados_usuario['tempo']} minutos
+- Estilo de treino: Corrida
+- Dias de treino por semana: {dados_usuario['dias']}
+- Tempo disponível por treino: {dados_usuario['tempo']} minutos
 - Total de semanas: {semanas}
 
-📋 Cada semana deve conter:
-- Treino 1 (detalhado com ritmo e tempo)
-- Treino 2 (detalhado com ritmo e tempo)
-- Progressão clara de ritmo semana a semana.
+📋 Em cada semana, gere:
+- Treino 1: Corrida contínua leve a moderada
+- Treino 2: Intervalados (ritmo mais forte)
+- Se o usuário tiver nível Intermediário ou Avançado, adicione um terceiro treino opcional: "Longão" de final de semana (corrida contínua mais longa e ritmos confortáveis).
 
-💡 Orientações:
-- Ritmos reais em min/km (ex: 6:30/km)
-- Aumentar gradualmente intensidade.
-- Incluir dicas de descanso e recuperação.
-- Começar mais leve, terminar no ritmo alvo.
+📈 Progresso esperado:
+- Ritmo vai evoluindo toda 1-2 semanas (min/km).
+- Volume semanal também pode crescer até 10% por semana.
 
-Formato de resposta:
+🎯 Atenção:
+- Na última semana, criar um treino focado em atingir **exatamente o objetivo** ({dados_usuario['objetivo']}) a ritmo próximo ao desejado.
+- Deixe explícito que é a semana da realização do objetivo!
+
+💡 Outras Orientações:
+- Ritmos expressos sempre em min/km (ex.: 6:30/km).
+- Distâncias e tempos claros (ex.: "correr 5km a 5:30/km" ou "40 minutos a 6:00/km").
+- Indicar aquecimento (5-10 min) e desaquecimento (5-10 min) para cada treino.
+- Indicar se precisar descanso ou treino regenerativo.
+
+📝 Formato:
 - Semana 1:
   - Treino 1: ...
   - Treino 2: ...
-- Semana 2: ...
-(etc)
+  - (Opcional) Longão: ...
+- Semana 2:
+  - ...
 
-Finalize com dicas gerais de recuperação e motivação.
+Finalize com dicas gerais de recuperação (sono, alimentação, hidratação e motivação).
 """
 
     plano_gerado = await gerar_plano_openai(prompt, semanas)
@@ -538,36 +547,46 @@ async def generatePace():
     elif nivel == "avançado":
         estilo_treino = "treinos de tempo run, intervalados fortes e séries de tiros."
 
-    prompt = f"""
-Você é um treinador especializado em melhorar o pace de corredores.
+    prompt = prompt = f"""
+Você é um treinador especializado em melhoria de Pace.
 
-Crie um plano para que o usuário consiga atingir o objetivo: {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']}.
+Crie um plano de treino focado para que o usuário atinja o objetivo: {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']}.
 
-⚡ Informações:
+⚡ Informações do usuário:
 - Nível: {dados_usuario['nivel']}
-- Estilo de treino: {estilo_treino}
-- Dias por semana: {dados_usuario['dias']}
-- Tempo por treino: {dados_usuario['tempo']} minutos
-- Duração total: {semanas} semanas
+- Estilo de treino: Melhoria de pace
+- Dias de treino por semana: {dados_usuario['dias']}
+- Tempo disponível por treino: {dados_usuario['tempo']} minutos
+- Total de semanas: {semanas}
 
-📝 Estrutura de cada semana:
-- Treino 1: Específico para aumento de velocidade.
-- Treino 2: Corrida contínua em ritmo confortável.
-- Progressão semana a semana: aumento gradual de velocidade.
+📋 Em cada semana, gere:
+- Treino 1: Intervalados focados em melhorar velocidade (tiros)
+- Treino 2: Corrida contínua leve/média
+- Se o usuário for Intermediário ou Avançado, adicione treino extra: tiros curtos (200-400m em alta intensidade) ou longão leve.
 
-Dicas:
-- Utilizar ritmos em min/km reais (ex: 5:20/km).
-- Aumentar intensidade a cada 2 semanas.
-- Reforçar a importância de dias de descanso.
+📈 Progressão:
+- Ritmos diminuindo gradualmente a cada 2 semanas.
+- Volume de treinos crescendo de forma progressiva e segura.
 
-Resposta no formato:
+🎯 Atenção:
+- Na última semana, o usuário deverá conseguir manter o **pace-alvo** definido ({dados_usuario['objetivo']}) por uma distância relevante (ex.: 5km, 10km).
+
+💡 Outras dicas:
+- Ritmos sempre expressos em min/km.
+- Indicar aquecimento (5-10 min) e desaquecimento (5-10 min).
+- Incluir dicas de alongamento, descanso e mentalização.
+
+📝 Formato:
 - Semana 1:
   - Treino 1: ...
   - Treino 2: ...
-(etc)
+  - (Opcional) Tiros curtos ou Longão: ...
+- Semana 2:
+  - ...
 
-Finalize com recomendações de hidratação, descanso e ajustes de intensidade.
+Finalize com orientações sobre alimentação, descanso e acompanhamento dos ritmos semanalmente.
 """
+
 
     plano_gerado = await gerar_plano_openai(prompt, semanas)
 
