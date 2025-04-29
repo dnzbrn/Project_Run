@@ -443,7 +443,7 @@ async def generate():
 
     semanas = calcular_semanas(dados_usuario['tempo_melhoria'])
 
-    prompt = f"""
+    prompt = prompt = f"""
 Você é um treinador de corrida profissional.
 
 Crie um plano de corrida para que o usuário atinja o objetivo: {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']}.
@@ -454,38 +454,27 @@ Crie um plano de corrida para que o usuário atinja o objetivo: {dados_usuario['
 - Tempo disponível por treino: {dados_usuario['tempo']} minutos
 - Duração do plano: {semanas} semanas
 
-✅ Regras:
+✅ Instruções:
+- Se o plano tiver **até 12 semanas**, detalhe TODAS as semanas individualmente (não agrupe).
+- Se o plano tiver **mais de 12 semanas**, detalhe até a semana 8 e depois agrupe (ex.: "Semanas 9–12: manter aumento gradual de distância e ritmo alvo").
 - Cada treino deve conter:
   - Aquecimento inicial (minutos) com sugestão de ritmo (ex.: caminhada rápida, trote leve).
-  - Parte principal com distâncias e ritmos (ex.: "4x800m a 5:30/km").
+  - Parte principal com distâncias e ritmos claros (ex.: "4x800m a 5:30/km").
   - Desaquecimento final (ex.: 5-10 min de caminhada leve).
-- Indique claramente **distância** e **ritmo** para todos os treinos.
-- Detalhar **semana a semana** se o plano tiver até 12 semanas.
-- Se o plano tiver **mais de 12 semanas**, detalhe até a semana 8 e agrupe as demais.
-- Na semana do objetivo, criar um treino especial: corrida da distância alvo tentando manter um **ritmo sugerido**.
+- Na **semana do objetivo**, criar um treino especial de realização da meta, indicando distância e ritmo sugerido.
 - Incluir dicas práticas de recuperação no final.
 
 ✅ Formato:
 - Título: **Plano de Corrida para {dados_usuario['objetivo']}**
-- Informações iniciais do usuário
-- Semana a semana (detalhado até 12 semanas)
-- Semana final (semana do objetivo)
-- Dicas finais de recuperação e motivação.
+- Informações do usuário
+- Semana a semana (ex.: Semana 1, Semana 2, etc.)
+- Semana do objetivo
+- Dicas finais
 
 ✅ Estilo de escrita:
 - Profissional, amigável e motivador.
-- Não usar comandos internos ou instruções de IA.
+- Não usar comandos internos ou instruções técnicas.
 """
-
-    plano_gerado = await gerar_plano_openai(prompt, semanas)
-
-    if registrar_geracao(email, plano):
-        session["titulo"] = f"Plano de Corrida: {dados_usuario['objetivo']}"
-        session["plano"] = plano
-        session["plano_gerado"] = "Este plano é gerado automaticamente. Consulte um profissional para ajustes.\n\n" + plano_gerado
-        return redirect(url_for("resultado"))
-    else:
-        return "Erro ao registrar seu plano. Tente novamente.", 500
 
 
 
@@ -523,26 +512,25 @@ Crie um plano para que o usuário alcance o objetivo: {dados_usuario['objetivo']
 - Tipo de treino: Foco em pace (ritmo)
 - Duração do plano: {semanas} semanas
 
-✅ Regras:
-- Cada treino deve conter:
-  - Aquecimento (minutos) com sugestão (ex.: caminhada rápida, trote leve).
-  - Treino principal com distâncias e ritmos específicos (ex.: 4x800m a 5:00/km).
-  - Desaquecimento (5–10 minutos de caminhada leve).
-- Indique sempre o ritmo alvo em min/km.
-- Detalhar **semana a semana** se tiver até 12 semanas.
-- Se tiver **mais de 12 semanas**, detalhe até a 8ª semana e depois agrupe.
-- Criar um treino especial na semana do objetivo, especificando o **ritmo desejado**.
+✅ Instruções:
+- Se o plano tiver **até 12 semanas**, detalhe TODAS as semanas separadamente.
+- Se o plano tiver **mais de 12 semanas**, detalhe até a semana 8 e depois agrupe o restante.
+- Em cada treino:
+  - Aquecimento inicial (ex.: 5-10 minutos de caminhada rápida ou trote).
+  - Parte principal com distâncias e ritmos especificados (ex.: "6x400m a 5:30/km").
+  - Desaquecimento final (ex.: 5-10 minutos de caminhada leve).
+- Na **semana final**, criar treino especial tentando atingir o ritmo alvo para a distância desejada.
 
 ✅ Formato:
 - Título: **Plano de Treino para Melhorar Pace: {dados_usuario['objetivo']}**
-- Informações iniciais do usuário
-- Semana a semana (detalhado até 12 semanas)
-- Semana final (semana do objetivo)
-- Dicas finais de recuperação.
+- Informações do usuário
+- Semana a semana (detalhado)
+- Semana do objetivo
+- Dicas finais
 
 ✅ Estilo:
-- Profissional, amigável e didático.
-- Não gerar comandos internos.
+- Profissional, claro e motivador.
+- Não usar comandos internos ou marcações técnicas.
 """
 
     plano_gerado = await gerar_plano_openai(prompt, semanas)
