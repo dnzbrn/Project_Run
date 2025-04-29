@@ -433,13 +433,7 @@ async def generate():
         return "Dados do formulário incompletos.", 400
 
     email = dados_usuario["email"]
-
-    # Se for assinante, já define anual
-    if session.get("plano") == "anual":
-        plano = "anual"
-    else:
-        plano = dados_usuario.get("plano", "gratuito")
-
+    plano = session.get("plano", dados_usuario.get("plano", "gratuito"))
     session["email"] = email
 
     if not pode_gerar_plano(email, plano):
@@ -449,20 +443,10 @@ async def generate():
 
     semanas = calcular_semanas(dados_usuario['tempo_melhoria'])
 
-    # Nível influencia o estilo do treino
-    nivel = dados_usuario["nivel"].lower()
-    if nivel == "iniciante":
-        estilo_treino = "treinos leves e constantes, com foco na base aeróbica e construção gradual da resistência."
-    elif nivel == "intermediário":
-        estilo_treino = "combinação equilibrada de corridas contínuas e treinos intervalados moderados."
-    elif nivel == "avançado":
-        estilo_treino = "treinos intervalados intensos, tempo runs e longões progressivos."
-
-    # Construir o prompt
-    prompt = prompt = prompt = prompt = f"""
+    prompt = f"""
 Você é um treinador de corrida profissional.
 
-Crie um plano de corrida para que o usuário atinja o objetivo de: {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']}.
+Crie um plano de corrida para que o usuário atinja o objetivo: {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']}.
 
 ✅ Dados do usuário:
 - Nível: {dados_usuario['nivel']}
@@ -475,24 +459,23 @@ Crie um plano de corrida para que o usuário atinja o objetivo de: {dados_usuari
   - Aquecimento inicial (minutos) com sugestão de ritmo (ex.: caminhada rápida, trote leve).
   - Parte principal com distâncias e ritmos (ex.: "4x800m a 5:30/km").
   - Desaquecimento final (ex.: 5-10 min de caminhada leve).
-- Indique **distância** e **ritmo** em todos os treinos.
-- Se o plano for maior que 12 semanas, detalhe as primeiras 8 semanas e depois agrupe (ex.: "Semanas 9-12").
-- Na última semana (semana do objetivo), monte um treino especial para realização do objetivo.
-- Inclua dicas de recuperação no final.
+- Indique claramente **distância** e **ritmo** para todos os treinos.
+- Detalhar **semana a semana** se o plano tiver até 12 semanas.
+- Se o plano tiver **mais de 12 semanas**, detalhe até a semana 8 e agrupe as demais.
+- Na semana do objetivo, criar um treino especial: corrida da distância alvo tentando manter um **ritmo sugerido**.
+- Incluir dicas práticas de recuperação no final.
 
 ✅ Formato:
-- Título: Plano de Corrida para {dados_usuario['objetivo']}
+- Título: **Plano de Corrida para {dados_usuario['objetivo']}**
 - Informações iniciais do usuário
-- Semana a semana (ex: Semana 1, Semana 2, etc.)
+- Semana a semana (detalhado até 12 semanas)
 - Semana final (semana do objetivo)
-- Dicas finais.
+- Dicas finais de recuperação e motivação.
 
 ✅ Estilo de escrita:
 - Profissional, amigável e motivador.
-- Não usar comandos internos ou instruções técnicas.
+- Não usar comandos internos ou instruções de IA.
 """
-
-
 
     plano_gerado = await gerar_plano_openai(prompt, semanas)
 
@@ -503,6 +486,7 @@ Crie um plano de corrida para que o usuário atinja o objetivo de: {dados_usuari
         return redirect(url_for("resultado"))
     else:
         return "Erro ao registrar seu plano. Tente novamente.", 500
+
 
 
 
@@ -517,12 +501,7 @@ async def generatePace():
         return "Dados do formulário incompletos.", 400
 
     email = dados_usuario["email"]
-
-    if session.get("plano") == "anual":
-        plano = "anual"
-    else:
-        plano = dados_usuario.get("plano", "gratuito")
-
+    plano = session.get("plano", dados_usuario.get("plano", "gratuito"))
     session["email"] = email
 
     if not pode_gerar_plano(email, plano):
@@ -532,16 +511,8 @@ async def generatePace():
 
     semanas = calcular_semanas(dados_usuario['tempo_melhoria'])
 
-    nivel = dados_usuario["nivel"].lower()
-    if nivel == "iniciante":
-        estilo_treino = "foco em corridas contínuas leves, caminhada ativa e pequenas acelerações."
-    elif nivel == "intermediário":
-        estilo_treino = "combinação de corridas contínuas moderadas e sessões curtas de velocidade."
-    elif nivel == "avançado":
-        estilo_treino = "treinos de tempo run, intervalados fortes e séries de tiros."
-
-    prompt = prompt = prompt = prompt = f"""
-Você é um treinador de corrida especializado em melhora de pace.
+    prompt = f"""
+Você é um treinador de corrida especializado em melhoria de pace.
 
 Crie um plano para que o usuário alcance o objetivo: {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']}.
 
@@ -554,28 +525,25 @@ Crie um plano para que o usuário alcance o objetivo: {dados_usuario['objetivo']
 
 ✅ Regras:
 - Cada treino deve conter:
-  - Aquecimento (minutos) + sugestões (ex: trote/caminhada rápida).
-  - Treino principal com intervalos, fartlek, ou corrida contínua, indicando distâncias e ritmos.
-  - Desaquecimento (ex: caminhada leve de 5-10 min).
-- Indicar claramente o ritmo (pace) esperado (ex.: 5:30/km).
-- Se o plano tiver mais de 12 semanas, detalhar até a semana 8 e agrupar depois.
-- Criar um treino especial na semana do objetivo.
-- Finalizar com dicas práticas de recuperação.
+  - Aquecimento (minutos) com sugestão (ex.: caminhada rápida, trote leve).
+  - Treino principal com distâncias e ritmos específicos (ex.: 4x800m a 5:00/km).
+  - Desaquecimento (5–10 minutos de caminhada leve).
+- Indique sempre o ritmo alvo em min/km.
+- Detalhar **semana a semana** se tiver até 12 semanas.
+- Se tiver **mais de 12 semanas**, detalhe até a 8ª semana e depois agrupe.
+- Criar um treino especial na semana do objetivo, especificando o **ritmo desejado**.
 
 ✅ Formato:
-- Título: Plano de Treino para Melhorar Pace: {dados_usuario['objetivo']}
+- Título: **Plano de Treino para Melhorar Pace: {dados_usuario['objetivo']}**
 - Informações iniciais do usuário
-- Semana a semana detalhada
+- Semana a semana (detalhado até 12 semanas)
 - Semana final (semana do objetivo)
-- Dicas finais.
+- Dicas finais de recuperação.
 
 ✅ Estilo:
 - Profissional, amigável e didático.
-- Não gerar instruções técnicas internas.
+- Não gerar comandos internos.
 """
-
-
-
 
     plano_gerado = await gerar_plano_openai(prompt, semanas)
 
