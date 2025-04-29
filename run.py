@@ -432,15 +432,12 @@ async def generate():
     if not all(field in dados_usuario for field in required_fields):
         return "Dados do formulário incompletos.", 400
 
-    # Se o usuário for assinante, forçamos o plano para "anual"
     if session.get("plano") == "anual":
         plano = "anual"
     else:
         plano = dados_usuario.get("plano")
 
     email = dados_usuario["email"]
-
-    # Atualiza o email na sessão
     session["email"] = email
 
     if not pode_gerar_plano(email, plano):
@@ -456,45 +453,42 @@ async def generate():
         return "Preparação para meia-maratona requer mínimo de 12 semanas", 400
 
     prompt = f"""
-    Crie um plano de corrida detalhado que GARANTA que o usuário atinja: {dados_usuario['objetivo']} 
-    em {dados_usuario['tempo_melhoria']}. Siga rigorosamente:
+Você é um treinador de corrida profissional.
 
-    REQUISITOS:
-    1. OBJETIVO FINAL:
-       - Na semana {semanas}, o usuário deve conseguir realizar: {dados_usuario['objetivo']}
-    
-    2. ESTRUTURA DIÁRIA:
-       - Detalhe cada sessão com:
-         * Divisão do tempo em blocos
-         * Ritmos específicos para cada segmento
-         * Exemplo: "30min = 5' aquecimento (6:30/km) + 20' principal (10' a 6:00/km + 10' a 5:45/km) + 5' desaquecimento (7:00/km)"
-    
-    3. PROGRESSÃO SEMANAL:
-       - Mostre claramente como evolui até o objetivo final
-       - Exemplo:
-         "Semana 1: Corrida contínua a 6:40/km
-         Semana 4: Introdução a intervalos (5:50/km)
-         Semana {semanas}: Ritmo-alvo para {dados_usuario['objetivo']} (5:20/km)"
-    
-    4. ADAPTAÇÕES:
-       - Nível: {dados_usuario['nivel']}
-       - Dias/semana: {dados_usuario['dias']}
-       - Tempo/sessão: {dados_usuario['tempo']} minutos
+Crie um plano para que o usuário atinja o objetivo de: {dados_usuario['objetivo']}
+em {semanas} semanas ({dados_usuario['tempo_melhoria']}).
 
-    FORMATO DE RESPOSTA:
-    - Semana a semana com descrição completa
-    - Ritmos específicos para cada tipo de treino
-    - Garantia de que na semana final o objetivo será alcançado
-    """
+Detalhes obrigatórios:
+- Nível do aluno: {dados_usuario['nivel']}.
+- Quantidade de treinos semanais: {dados_usuario['dias']} dias.
+- Duração média dos treinos: {dados_usuario['tempo']} minutos.
+
+Regras:
+- Distribuir treinos de forma equilibrada entre corridas leves, moderadas, longas e treinos de velocidade.
+- Evoluir o volume e a intensidade de maneira progressiva (no máximo +10% por semana).
+- Indicar ritmos estimados (em min/km) para cada tipo de treino.
+- Definir metas intermediárias (ex.: 5km em X tempo, 10km em Y tempo).
+
+Formato da resposta:
+- Semana 1: descrição completa dos treinos
+- Semana 2: descrição completa dos treinos
+- (...)
+- Semana {semanas}: o aluno deve estar preparado para {dados_usuario['objetivo']}.
+
+Importante:
+- Ajustar treinos conforme o objetivo final.
+- Incluir dicas de recuperação, aquecimento e desaquecimento.
+"""
 
     plano_gerado = await gerar_plano_openai(prompt, semanas)
 
     if registrar_geracao(email, plano):
-        session["titulo"] = f"Plano para: {dados_usuario['objetivo']}"
+        session["titulo"] = f"Plano de Corrida: {dados_usuario['objetivo']}"
         session["plano_gerado"] = "Este plano é gerado automaticamente. Consulte um profissional para ajustes.\n\n" + plano_gerado
         return redirect(url_for("resultado"))
     else:
         return "Erro ao registrar seu plano. Tente novamente.", 500
+
 
 @app.route("/generatePace", methods=["POST"])
 @limiter.limit("10 per hour")
@@ -522,20 +516,32 @@ async def generate_pace():
     semanas = calcular_semanas(dados_usuario['tempo_melhoria'])
 
     prompt = f"""
-    Crie um plano de corrida detalhado focado em melhorar o PACE, para que o usuário atinja o objetivo: {dados_usuario['objetivo']}
-    no prazo de {dados_usuario['tempo_melhoria']}.
+Você é um treinador de corrida experiente.
 
-    DETALHES:
-    - Nível: {dados_usuario['nivel']}
-    - Dias de treino por semana: {dados_usuario['dias']}
-    - Duração de cada treino: {dados_usuario['tempo']} minutos
+Objetivo do aluno: {dados_usuario['objetivo']} (melhorar pace).
 
-    FORMATO:
-    - Semana a semana
-    - Incluir aquecimento, treino principal, desaquecimento
-    - Indicar ritmos alvo a cada semana
-    - Explicar progressão de ritmo para atingir o objetivo final
-    """
+Detalhes obrigatórios:
+- O plano deve levar o usuário de seu pace atual até o objetivo desejado em {semanas} semanas ({dados_usuario['tempo_melhoria']}).
+- Nível do aluno: {dados_usuario['nivel']}.
+- Disponibilidade: {dados_usuario['dias']} dias de treino por semana.
+- Duração média dos treinos: {dados_usuario['tempo']} minutos.
+
+Regras:
+- Comece respeitando o ritmo atual (aproximadamente 8:00/km) e progrida semana a semana até 5:00/km.
+- A cada semana, evolua o pace em torno de 10 a 15 segundos mais rápido.
+- Divida o treino semanal em: corrida contínua, treinos intervalados e longos.
+- Respeitar o princípio da progressão gradual (no máximo +10% volume semanal).
+
+Formato da resposta:
+- Semana 1: Ritmo X, treino A
+- Semana 2: Ritmo Y, treino B
+- (etc)
+- Semana {semanas}: Ritmo final = 5:00/km
+
+Importante:
+- Mostrar como cada treino contribui para melhorar o pace.
+- Indicar ritmos sugeridos (em min/km).
+"""
 
     plano_gerado = await gerar_plano_openai(prompt, semanas)
 
@@ -545,6 +551,7 @@ async def generate_pace():
         return redirect(url_for("resultado"))
     else:
         return "Erro ao registrar seu plano. Tente novamente.", 500
+
 
 
 # ================================================
