@@ -443,7 +443,7 @@ async def generate():
 
     semanas = calcular_semanas(dados_usuario['tempo_melhoria'])
 
-    prompt = prompt = f"""
+    prompt = f"""
 Você é um treinador de corrida profissional.
 
 Crie um plano de corrida para que o usuário atinja o objetivo: {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']}.
@@ -475,6 +475,17 @@ Crie um plano de corrida para que o usuário atinja o objetivo: {dados_usuario['
 - Profissional, amigável e motivador.
 - Não usar comandos internos ou instruções técnicas.
 """
+
+    # 🔥 Faltava isso:
+    plano_gerado = await gerar_plano_openai(prompt, semanas)
+
+    if registrar_geracao(email, plano):
+        session["titulo"] = f"Plano de Corrida: {dados_usuario['objetivo']}"
+        session["plano"] = plano
+        session["plano_gerado"] = "Este plano é gerado automaticamente. Consulte um profissional para ajustes.\n\n" + plano_gerado
+        return redirect(url_for("resultado"))
+    else:
+        return "Erro ao registrar seu plano. Tente novamente.", 500
 
 
 
@@ -514,9 +525,9 @@ Crie um plano para que o usuário alcance o objetivo: {dados_usuario['objetivo']
 
 ✅ Instruções:
 - Se o plano tiver **até 12 semanas**, detalhe TODAS as semanas separadamente.
-- Se o plano tiver **mais de 12 semanas**, detalhe até a semana 8 e depois agrupe o restante.
+- Se o plano tiver **mais de 12 semanas**, detalhe até a semana 8 e depois agrupe o restante (ex.: "Semanas 9–12: aumentar volume e velocidade progressivamente").
 - Em cada treino:
-  - Aquecimento inicial (ex.: 5-10 minutos de caminhada rápida ou trote).
+  - Aquecimento inicial (ex.: 5-10 minutos de caminhada rápida ou trote leve).
   - Parte principal com distâncias e ritmos especificados (ex.: "6x400m a 5:30/km").
   - Desaquecimento final (ex.: 5-10 minutos de caminhada leve).
 - Na **semana final**, criar treino especial tentando atingir o ritmo alvo para a distância desejada.
@@ -533,6 +544,7 @@ Crie um plano para que o usuário alcance o objetivo: {dados_usuario['objetivo']
 - Não usar comandos internos ou marcações técnicas.
 """
 
+    # 🔥 Faltava isso também no seu código:
     plano_gerado = await gerar_plano_openai(prompt, semanas)
 
     if registrar_geracao(email, plano):
@@ -542,6 +554,7 @@ Crie um plano para que o usuário alcance o objetivo: {dados_usuario['objetivo']
         return redirect(url_for("resultado"))
     else:
         return "Erro ao registrar seu plano. Tente novamente.", 500
+
 
 
 
