@@ -443,7 +443,7 @@ async def generate():
 
     semanas = calcular_semanas(dados_usuario['tempo_melhoria'])
 
-    prompt = f"""
+    prompt = prompt = f"""
 Você é um treinador de corrida profissional.
 
 Crie um plano de corrida para que o usuário atinja o objetivo: {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']}.
@@ -455,25 +455,25 @@ Crie um plano de corrida para que o usuário atinja o objetivo: {dados_usuario['
 - Duração do plano: {semanas} semanas
 
 ✅ Instruções:
-- Se o plano tiver **até 12 semanas**, detalhe TODAS as semanas individualmente (não agrupe).
-- Se o plano tiver **mais de 12 semanas**, detalhe até a semana 8 e depois agrupe (ex.: "Semanas 9–12: manter aumento gradual de distância e ritmo alvo").
+- Se o plano tiver **até 12 semanas**, **detalhe TODAS as semanas separadamente** (não pule, não agrupe, não use "...").
+- Se o plano tiver **mais de 12 semanas**, **detalhe até a semana 8** e depois **agrupá-las** (ex.: "Semanas 9–12: continuar aumentando volume e intensidade").
 - Cada treino deve conter:
-  - Aquecimento inicial (minutos) com sugestão de ritmo (ex.: caminhada rápida, trote leve).
-  - Parte principal com distâncias e ritmos claros (ex.: "4x800m a 5:30/km").
-  - Desaquecimento final (ex.: 5-10 min de caminhada leve).
-- Na **semana do objetivo**, criar um treino especial de realização da meta, indicando distância e ritmo sugerido.
-- Incluir dicas práticas de recuperação no final.
+  - Aquecimento (com tempo e atividade sugerida, ex.: "10 min de caminhada rápida").
+  - Parte principal (distância e ritmo indicados, ex.: "4x800m a 5:30/km").
+  - Desaquecimento (ex.: "5 min de caminhada leve").
+- Na **semana final (semana do objetivo)**, criar um treino especial para tentar atingir o objetivo, sugerindo ritmo (ex.: "Correr 5km a 6:00/km").
+- Escreva dicas finais de recuperação e motivação no final.
 
-✅ Formato:
-- Título: **Plano de Corrida para {dados_usuario['objetivo']}**
+✅ Formato de saída:
+- Título principal: **Plano de Corrida para {dados_usuario['objetivo']}**
 - Informações do usuário
 - Semana a semana (ex.: Semana 1, Semana 2, etc.)
-- Semana do objetivo
+- Semana final (objetivo)
 - Dicas finais
 
 ✅ Estilo de escrita:
-- Profissional, amigável e motivador.
-- Não usar comandos internos ou instruções técnicas.
+- Profissional, claro e motivador.
+- Nunca usar comandos internos ou instruções técnicas.
 """
 
     # 🔥 Faltava isso:
@@ -524,24 +524,24 @@ Crie um plano para que o usuário alcance o objetivo: {dados_usuario['objetivo']
 - Duração do plano: {semanas} semanas
 
 ✅ Instruções:
-- Se o plano tiver **até 12 semanas**, detalhe TODAS as semanas separadamente.
-- Se o plano tiver **mais de 12 semanas**, detalhe até a semana 8 e depois agrupe o restante (ex.: "Semanas 9–12: aumentar volume e velocidade progressivamente").
+- Se o plano tiver **até 12 semanas**, **detalhar todas as semanas separadamente** (sem pular, sem usar "..." ou "(detalhar depois)").
+- Se o plano tiver **mais de 12 semanas**, **detalhar até a semana 8** e depois **agrupar as demais** (ex.: "Semanas 9–12: foco em aumento progressivo de distância e redução gradual do pace").
 - Em cada treino:
   - Aquecimento inicial (ex.: 5-10 minutos de caminhada rápida ou trote leve).
-  - Parte principal com distâncias e ritmos especificados (ex.: "6x400m a 5:30/km").
-  - Desaquecimento final (ex.: 5-10 minutos de caminhada leve).
-- Na **semana final**, criar treino especial tentando atingir o ritmo alvo para a distância desejada.
+  - Parte principal com distâncias e ritmos claros (ex.: "6x400m a 5:30/km").
+  - Desaquecimento (ex.: 5-10 minutos de caminhada leve).
+- Na **semana final**, montar um treino especial tentando atingir o ritmo objetivo para a distância desejada, indicando ritmo sugerido (ex.: "Correr 5km a 5:00/km").
 
-✅ Formato:
-- Título: **Plano de Treino para Melhorar Pace: {dados_usuario['objetivo']}**
-- Informações do usuário
-- Semana a semana (detalhado)
-- Semana do objetivo
-- Dicas finais
+✅ Formato de saída:
+- Título principal: **Plano de Treino para Melhorar Pace: {dados_usuario['objetivo']}**
+- Informações iniciais do usuário
+- Semana a semana detalhada
+- Semana final (treino do objetivo)
+- Dicas finais de recuperação e motivação
 
-✅ Estilo:
-- Profissional, claro e motivador.
-- Não usar comandos internos ou marcações técnicas.
+✅ Estilo de escrita:
+- Profissional, amigável e motivador.
+- Não usar comandos internos ou instruções técnicas.
 """
 
     # 🔥 Faltava isso também no seu código:
