@@ -403,7 +403,8 @@ def erro():
 def resultado():
     try:
         titulo = session.get("titulo", "Plano de Treino")
-        plano = session.get("plano", "Nenhum plano gerado.")
+        plano = session.get("plano_gerado", "Nenhum plano gerado.")  # 🔥 Corrigido aqui!
+
         return render_template("resultado.html", titulo=titulo, plano=plano)
     except Exception as e:
         logging.error(f"Erro ao renderizar resultado.html: {e}")
@@ -412,7 +413,7 @@ def resultado():
         <html>
         <body>
             <h1>{session.get('titulo', 'Plano de Treino')}</h1>
-            <pre>{session.get('plano', 'Nenhum plano gerado.')}</pre>
+            <pre>{session.get('plano_gerado', 'Nenhum plano gerado.')}</pre>
         </body>
         </html>
         """, 200
@@ -427,20 +428,19 @@ def resultado():
 async def generate():
     dados_usuario = request.form
     required_fields = ["email", "objetivo", "tempo_melhoria", "nivel", "dias", "tempo"]
-    
+
     if not all(field in dados_usuario for field in required_fields):
         return "Dados do formulário incompletos.", 400
 
-    # ⚡️ Se o usuário for assinante, forçamos o plano para "anual"
+    # Se o usuário for assinante, forçamos o plano para "anual"
     if session.get("plano") == "anual":
         plano = "anual"
     else:
-        # Caso contrário, usamos o que veio do formulário
         plano = dados_usuario.get("plano")
 
     email = dados_usuario["email"]
 
-    # Atualiza o email na sessão para garantir consistência
+    # Atualiza o email na sessão
     session["email"] = email
 
     if not pode_gerar_plano(email, plano):
@@ -449,7 +449,7 @@ async def generate():
         return "Você já gerou um plano gratuito este mês. Atualize para o plano anual para gerar mais planos.", 400
 
     semanas = calcular_semanas(dados_usuario['tempo_melhoria'])
-    
+
     if "maratona" in dados_usuario['objetivo'].lower() and semanas < 16:
         return "Preparação para maratona requer mínimo de 16 semanas", 400
     elif "meia-maratona" in dados_usuario['objetivo'].lower() and semanas < 12:
@@ -491,8 +491,7 @@ async def generate():
 
     if registrar_geracao(email, plano):
         session["titulo"] = f"Plano para: {dados_usuario['objetivo']}"
-        session["plano"] = "anual"  # Garante que o plano salvo na sessão é 'anual'
-        session["plano_gerado"] = plano_gerado
+        session["plano_gerado"] = "Este plano é gerado automaticamente. Consulte um profissional para ajustes.\n\n" + plano_gerado
         return redirect(url_for("resultado"))
     else:
         return "Erro ao registrar seu plano. Tente novamente.", 500
@@ -541,9 +540,8 @@ async def generate_pace():
     plano_gerado = await gerar_plano_openai(prompt, semanas)
 
     if registrar_geracao(email, plano):
-        session["titulo"] = f"Plano para Melhorar Pace: {dados_usuario['objetivo']}"
-        session["plano"] = "anual" if session.get("plano") == "anual" else plano
-        session["plano_gerado"] = plano_gerado
+        session["titulo"] = f"Plano de Pace: {dados_usuario['objetivo']}"
+        session["plano_gerado"] = "Este plano é gerado automaticamente. Consulte um profissional para ajustes.\n\n" + plano_gerado
         return redirect(url_for("resultado"))
     else:
         return "Erro ao registrar seu plano. Tente novamente.", 500
