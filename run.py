@@ -245,7 +245,7 @@ def enviar_email_confirmacao_pagamento(email, nome="Cliente"):
                     <p>Olá {nome},</p>
                     <p>Seu pagamento foi processado com sucesso e seu plano anual foi ativado!</p>
                     <p>Agora você pode gerar quantos planos de treino quiser durante 1 ano.</p>
-                    <p><a href="https://treinorun.com.br/seutreino" style="background-color: #27ae60; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Criar Novo Treino</a></p>
+                    <p><a href="https://treinorun.com.br/" style="background-color: #27ae60; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Criar Novo Treino</a></p>
                 </div>
                 <div class="footer">
                     <p>© {datetime.now().year} TreinoRun • <a href="https://treinorun.com.br">www.treinorun.com.br</a></p>
@@ -325,7 +325,30 @@ def seutreino():
 @limiter.limit("100 per hour")
 def sucesso():
     try:
+        email = session.get("email")
+
+        if not email:
+            # Se o email não está na sessão, tenta recuperar da URL (opcional)
+            email = request.args.get("email")
+
+        if email:
+            usuario = db.execute(
+                text("SELECT * FROM usuarios WHERE email = :email"),
+                {"email": email}
+            ).fetchone()
+
+            if usuario:
+                # Garante que o plano e email estejam corretos na sessão
+                session["plano"] = usuario.plano
+                session["email"] = usuario.email  # Atualiza email também para garantir
+            else:
+                logging.warning(f"Usuário não encontrado para email: {email}")
+        else:
+            logging.warning("Nenhum email encontrado na sessão ou URL.")
+
+        # Renderiza a página de sucesso normal
         return render_template("sucesso.html")
+
     except Exception as e:
         logging.error(f"Erro ao renderizar sucesso.html: {e}")
         return render_template_string("""
@@ -333,8 +356,8 @@ def sucesso():
             <html>
             <body>
                 <h1>Sucesso!</h1>
-                <p>Pagamento aprovado e plano ativado com sucesso.</p>
-                <a href="/seutreino">Criar seu primeiro treino</a>
+                <p>Pagamento aprovado, mas ocorreu um erro ao carregar seus dados. Tente acessar novamente.</p>
+                <a href="/">Voltar para a Página Inicial</a>
             </body>
             </html>
         """), 200
@@ -403,13 +426,22 @@ def resultado():
 @async_route
 async def generate():
     dados_usuario = request.form
-    required_fields = ["email", "plano", "objetivo", "tempo_melhoria", "nivel", "dias", "tempo"]
+    required_fields = ["email", "objetivo", "tempo_melhoria", "nivel", "dias", "tempo"]
     
     if not all(field in dados_usuario for field in required_fields):
         return "Dados do formulário incompletos.", 400
 
+    # ⚡️ Se o usuário for assinante, forçamos o plano para "anual"
+    if session.get("plano") == "anual":
+        plano = "anual"
+    else:
+        # Caso contrário, usamos o que veio do formulário
+        plano = dados_usuario.get("plano")
+
     email = dados_usuario["email"]
-    plano = dados_usuario["plano"]
+
+    # Atualiza o email na sessão para garantir consistência
+    session["email"] = email
 
     if not pode_gerar_plano(email, plano):
         if plano == "anual":
@@ -431,7 +463,7 @@ async def generate():
     1. OBJETIVO FINAL:
        - Na semana {semanas}, o usuário deve conseguir realizar: {dados_usuario['objetivo']}
     
-    2. ESTRUTURA DIÁRIOS:
+    2. ESTRUTURA DIÁRIA:
        - Detalhe cada sessão com:
          * Divisão do tempo em blocos
          * Ritmos específicos para cada segmento
@@ -456,12 +488,66 @@ async def generate():
     """
 
     plano_gerado = await gerar_plano_openai(prompt, semanas)
+
     if registrar_geracao(email, plano):
         session["titulo"] = f"Plano para: {dados_usuario['objetivo']}"
-        session["plano"] = "Este plano é gerado automaticamente. Consulte um profissional para ajustes.\n\n" + plano_gerado
+        session["plano"] = "anual"  # Garante que o plano salvo na sessão é 'anual'
+        session["plano_gerado"] = plano_gerado
         return redirect(url_for("resultado"))
     else:
         return "Erro ao registrar seu plano. Tente novamente.", 500
+
+@app.route("/generatePace", methods=["POST"])
+@limiter.limit("10 per hour")
+@async_route
+async def generate_pace():
+    dados_usuario = request.form
+    required_fields = ["email", "objetivo", "tempo_melhoria", "nivel", "dias", "tempo"]
+
+    if not all(field in dados_usuario for field in required_fields):
+        return "Dados do formulário incompletos.", 400
+
+    if session.get("plano") == "anual":
+        plano = "anual"
+    else:
+        plano = dados_usuario.get("plano")
+
+    email = dados_usuario["email"]
+    session["email"] = email
+
+    if not pode_gerar_plano(email, plano):
+        if plano == "anual":
+            return redirect(url_for("iniciar_pagamento", email=email))
+        return "Você já gerou um plano gratuito este mês. Atualize para o plano anual para gerar mais planos.", 400
+
+    semanas = calcular_semanas(dados_usuario['tempo_melhoria'])
+
+    prompt = f"""
+    Crie um plano de corrida detalhado focado em melhorar o PACE, para que o usuário atinja o objetivo: {dados_usuario['objetivo']}
+    no prazo de {dados_usuario['tempo_melhoria']}.
+
+    DETALHES:
+    - Nível: {dados_usuario['nivel']}
+    - Dias de treino por semana: {dados_usuario['dias']}
+    - Duração de cada treino: {dados_usuario['tempo']} minutos
+
+    FORMATO:
+    - Semana a semana
+    - Incluir aquecimento, treino principal, desaquecimento
+    - Indicar ritmos alvo a cada semana
+    - Explicar progressão de ritmo para atingir o objetivo final
+    """
+
+    plano_gerado = await gerar_plano_openai(prompt, semanas)
+
+    if registrar_geracao(email, plano):
+        session["titulo"] = f"Plano para Melhorar Pace: {dados_usuario['objetivo']}"
+        session["plano"] = "anual" if session.get("plano") == "anual" else plano
+        session["plano_gerado"] = plano_gerado
+        return redirect(url_for("resultado"))
+    else:
+        return "Erro ao registrar seu plano. Tente novamente.", 500
+
 
 # ================================================
 # ROTAS DE PAGAMENTO (CORRIGIDAS)
@@ -476,6 +562,8 @@ def iniciar_pagamento():
         return "Email não fornecido.", 400
 
     email = dados_usuario["email"]
+
+    session["email"] = email	
 
     try:
         # Registrar tentativa de pagamento
@@ -654,16 +742,9 @@ def processar_assinatura(payload):
         logging.info(f"Processando assinatura: {id_assinatura}")
 
         status = payload.get("action", "updated")
-        
-        # Testes do Mercado Pago às vezes não enviam email, então tratamos separado
-        email = None
-        if payload.get("test", False):
-            logging.info("Notificação de teste recebida, não atualizando usuários.")
-        else:
-            # Aqui você poderia buscar o e-mail em outro serviço se necessário.
-            email = payload.get("payer_email")  # depende se seu sistema envia
-        
-        # ⚡ Inserir ou atualizar a assinatura
+        email = payload.get("payer_email")
+
+        # ⚡ Inserir ou atualizar assinatura
         with engine.begin() as conn:
             conn.execute(
                 text("""
@@ -679,18 +760,31 @@ def processar_assinatura(payload):
                 }
             )
 
-        # ⚡ Se for uma notificação real e tiver email, atualiza o usuário
+        # ⚡ Atualiza ou cria o usuário se for assinatura real
         if email:
             with engine.begin() as conn:
-                conn.execute(
-                    text("""
-                        UPDATE usuarios
-                        SET plano = 'anual',
-                            data_inscricao = NOW()
-                        WHERE email = :email
-                    """),
+                usuario = conn.execute(
+                    text("SELECT * FROM usuarios WHERE email = :email"),
                     {"email": email}
-                )
+                ).fetchone()
+
+                if not usuario:
+                    conn.execute(
+                        text("""
+                            INSERT INTO usuarios (email, plano, data_inscricao, ultima_geracao)
+                            VALUES (:email, 'anual', NOW(), NOW())
+                        """),
+                        {"email": email}
+                    )
+                else:
+                    conn.execute(
+                        text("""
+                            UPDATE usuarios
+                            SET plano = 'anual', data_inscricao = NOW()
+                            WHERE email = :email
+                        """),
+                        {"email": email}
+                    )
             enviar_email_confirmacao_pagamento(email)
 
         registrar_log(
@@ -750,44 +844,21 @@ def processar_pagamento(payload):
             status = "approved"  # Simula aprovado
             email = "teste@exemplo.com"  # Simula um email
 
-            # Simula inserção no banco
-            with engine.begin() as conn:
-                conn.execute(
-                    text("""
-                        INSERT INTO pagamentos (payment_id, status, data_pagamento)
-                        VALUES (:payment_id, :status, NOW())
-                        ON CONFLICT (payment_id) DO UPDATE
-                        SET status = EXCLUDED.status,
-                            data_pagamento = NOW()
-                    """),
-                    {
-                        "payment_id": id_pagamento,
-                        "status": status
-                    }
-                )
+        else:
+            # ⚡ Se não for teste: pega detalhes reais
+            logging.info(f"Processando pagamento real: {id_pagamento}")
 
-            registrar_log(
-                payload=json.dumps(payload),
-                status_processamento='pagamento_teste_processado',
-                mensagem_erro=None
-            )
+            detalhes_pagamento = obter_detalhes_pagamento(id_pagamento)
+            if not detalhes_pagamento:
+                raise ValueError("Não foi possível obter detalhes do pagamento")
 
-            return jsonify({"status": "pagamento_teste_processado"}), 200
+            status = detalhes_pagamento.get("status")
+            email = detalhes_pagamento.get("payer", {}).get("email")
 
-        # ⚡ Se não for teste: pega detalhes reais
-        logging.info(f"Processando pagamento real: {id_pagamento}")
+            if not email:
+                raise ValueError("Email não encontrado no pagamento")
 
-        detalhes_pagamento = obter_detalhes_pagamento(id_pagamento)
-        if not detalhes_pagamento:
-            raise ValueError("Não foi possível obter detalhes do pagamento")
-
-        status = detalhes_pagamento.get("status")
-        email = detalhes_pagamento.get("payer", {}).get("email")
-
-        if not email:
-            raise ValueError("Email não encontrado no pagamento")
-
-        # ⚡ Atualiza pagamento real
+        # ⚡ Atualiza pagamento real (ou teste) no banco
         with engine.begin() as conn:
             conn.execute(
                 text("""
@@ -803,22 +874,35 @@ def processar_pagamento(payload):
                 }
             )
 
-        # ⚡ Atualiza usuário se aprovado
-        if status == "approved":
+        # ⚡ Atualiza ou cria o usuário se pagamento aprovado
+        if status == "approved" and email:
             with engine.begin() as conn:
-                conn.execute(
-                    text("""
-                        UPDATE usuarios
-                        SET plano = 'anual',
-                            data_inscricao = NOW()
-                        WHERE email = :email
-                    """),
+                usuario = conn.execute(
+                    text("SELECT * FROM usuarios WHERE email = :email"),
                     {"email": email}
-                )
+                ).fetchone()
+
+                if not usuario:
+                    conn.execute(
+                        text("""
+                            INSERT INTO usuarios (email, plano, data_inscricao, ultima_geracao)
+                            VALUES (:email, 'anual', NOW(), NOW())
+                        """),
+                        {"email": email}
+                    )
+                else:
+                    conn.execute(
+                        text("""
+                            UPDATE usuarios
+                            SET plano = 'anual', data_inscricao = NOW()
+                            WHERE email = :email
+                        """),
+                        {"email": email}
+                    )
             enviar_email_confirmacao_pagamento(email)
 
         registrar_log(
-            payload=json.dumps(detalhes_pagamento),
+            payload=json.dumps(payload),
             status_processamento='pagamento_processado',
             mensagem_erro=None
         )
