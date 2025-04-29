@@ -459,44 +459,39 @@ async def generate():
         estilo_treino = "treinos intervalados intensos, tempo runs e longões progressivos."
 
     # Construir o prompt
-    prompt = prompt = prompt = f"""
-Crie um plano de corrida completo para que o usuário atinja o seguinte objetivo: {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']}.
+    prompt = prompt = prompt = prompt = f"""
+Você é um treinador de corrida profissional.
 
-✅ Informações do usuário:
-- Nível atual: {dados_usuario['nivel']}
+Crie um plano de corrida para que o usuário atinja o objetivo de: {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']}.
+
+✅ Dados do usuário:
+- Nível: {dados_usuario['nivel']}
 - Dias disponíveis por semana: {dados_usuario['dias']}
 - Tempo disponível por treino: {dados_usuario['tempo']} minutos
-- Tipo de treino: Corrida
-- Duração total: {semanas} semanas
+- Duração do plano: {semanas} semanas
 
-✅ Instruções:
-1. Se o plano tiver até 12 semanas:
-   - Detalhar treino por treino, semana a semana.
-2. Se o plano tiver mais de 12 semanas:
-   - Detalhar as primeiras 8 semanas.
-   - Depois agrupar por blocos de semanas (ex.: "Semanas 9-12") descrevendo evolução e foco dos treinos.
-3. Cada treino deve:
-   - Informar distância em quilômetros (ex.: 5km, 6km).
-   - Informar o ritmo esperado (ex.: 6:00/km, 5:45/km).
-4. Finalizar com uma semana especial para realização do objetivo.
-5. Adicionar dicas finais de recuperação e motivação.
+✅ Regras:
+- Cada treino deve conter:
+  - Aquecimento inicial (minutos) com sugestão de ritmo (ex.: caminhada rápida, trote leve).
+  - Parte principal com distâncias e ritmos (ex.: "4x800m a 5:30/km").
+  - Desaquecimento final (ex.: 5-10 min de caminhada leve).
+- Indique **distância** e **ritmo** em todos os treinos.
+- Se o plano for maior que 12 semanas, detalhe as primeiras 8 semanas e depois agrupe (ex.: "Semanas 9-12").
+- Na última semana (semana do objetivo), monte um treino especial para realização do objetivo.
+- Inclua dicas de recuperação no final.
 
-✅ Formato esperado:
+✅ Formato:
 - Título: Plano de Corrida para {dados_usuario['objetivo']}
 - Informações iniciais do usuário
-- Semana 1:
-  - Treino 1: ...
-  - Treino 2: ...
-- Semana 2:
-  - ...
-- (Blocos de semanas se necessário)
-- Semana final (objetivo)
-- Dicas de recuperação.
+- Semana a semana (ex: Semana 1, Semana 2, etc.)
+- Semana final (semana do objetivo)
+- Dicas finais.
 
-✅ Importante:
-- Escrever de maneira amigável e didática para o usuário.
-- NÃO gerar comandos internos ou instruções técnicas.
+✅ Estilo de escrita:
+- Profissional, amigável e motivador.
+- Não usar comandos internos ou instruções técnicas.
 """
+
 
 
     plano_gerado = await gerar_plano_openai(prompt, semanas)
@@ -545,39 +540,40 @@ async def generatePace():
     elif nivel == "avançado":
         estilo_treino = "treinos de tempo run, intervalados fortes e séries de tiros."
 
-    prompt = prompt = prompt = f"""
-Crie um plano de corrida para melhorar o pace do usuário, atingindo o objetivo: {dados_usuario['objetivo']}, em {dados_usuario['tempo_melhoria']}.
+    prompt = prompt = prompt = prompt = f"""
+Você é um treinador de corrida especializado em melhora de pace.
 
-✅ Informações do usuário:
-- Nível atual: {dados_usuario['nivel']}
-- Dias de treino por semana: {dados_usuario['dias']}
+Crie um plano para que o usuário alcance o objetivo: {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']}.
+
+✅ Dados do usuário:
+- Nível: {dados_usuario['nivel']}
+- Dias disponíveis por semana: {dados_usuario['dias']}
 - Tempo disponível por treino: {dados_usuario['tempo']} minutos
-- Tipo de treino: Foco em pace (velocidade)
-- Duração total: {semanas} semanas
+- Tipo de treino: Foco em pace (ritmo)
+- Duração do plano: {semanas} semanas
 
-✅ Instruções:
-1. Se o plano tiver até 12 semanas:
-   - Detalhar cada treino semana por semana.
-2. Se o plano tiver mais de 12 semanas:
-   - Detalhar até a semana 8.
-   - Depois agrupar blocos de semanas (ex.: "Semanas 9-12") explicando os ajustes de pace e volume.
-3. Cada treino deve:
-   - Informar distância em quilômetros (ex.: 6km, 8x400m, etc.).
-   - Informar ritmo esperado (ex.: 5:30/km).
-4. A semana final deve ser um treino especial para realizar o objetivo final.
-5. Inserir dicas práticas de recuperação e preparação.
+✅ Regras:
+- Cada treino deve conter:
+  - Aquecimento (minutos) + sugestões (ex: trote/caminhada rápida).
+  - Treino principal com intervalos, fartlek, ou corrida contínua, indicando distâncias e ritmos.
+  - Desaquecimento (ex: caminhada leve de 5-10 min).
+- Indicar claramente o ritmo (pace) esperado (ex.: 5:30/km).
+- Se o plano tiver mais de 12 semanas, detalhar até a semana 8 e agrupar depois.
+- Criar um treino especial na semana do objetivo.
+- Finalizar com dicas práticas de recuperação.
 
-✅ Formato esperado:
+✅ Formato:
 - Título: Plano de Treino para Melhorar Pace: {dados_usuario['objetivo']}
-- Informações iniciais
-- Semanas detalhadas e agrupadas
+- Informações iniciais do usuário
+- Semana a semana detalhada
 - Semana final (semana do objetivo)
 - Dicas finais.
 
-✅ Importante:
-- Escrever de forma amigável e clara para o usuário.
-- Não incluir comandos internos ou instruções técnicas no texto final.
+✅ Estilo:
+- Profissional, amigável e didático.
+- Não gerar instruções técnicas internas.
 """
+
 
 
 
