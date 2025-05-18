@@ -121,44 +121,35 @@ def validar_assinatura(body, signature):
     return hmac.compare_digest(assinatura_esperada, signature)
 
 def pode_gerar_plano(email, plano):
-    try:
-        # Verifica se o usuário está na sessão como logado
-        if session.get("logged_in") and session.get("email") == email:
-            if session.get("assinatura_ativa"):
-                return True
-            if plano == "gratuito":
-                if session.get("ultima_geracao"):
-                    ultima_geracao = datetime.strptime(str(session["ultima_geracao"]), "%Y-%m-%d %H:%M:%S")
-                    return (datetime.now() - ultima_geracao).days >= 30
-                return True
-            return False
+    # Verificação prioritária na sessão
+    if session.get("logged_in") and session.get("email") == email:
+        if session.get("assinatura_ativa"):
+            return True  # Usuário premium pode gerar à vontade
+        if plano == "gratuito":
+            return True  # Permite plano gratuito mesmo sem assinatura
 
-        # Se não estiver na sessão, verifica no banco de dados
+    # Fallback para consulta ao banco (caso sessão não esteja disponível)
+    try:
         usuario = db.execute(
-            text("SELECT * FROM usuarios WHERE email = :email"),
+            text("""
+                SELECT u.*, a.status as status_assinatura
+                FROM usuarios u
+                LEFT JOIN assinaturas a ON u.id = a.usuario_id
+                WHERE u.email = :email
+                ORDER BY a.id DESC LIMIT 1
+            """),
             {"email": email}
         ).fetchone()
 
-        if not usuario:
-            return True  # Permite que novos usuários gerem o primeiro plano gratuito
+        if usuario:
+            if plano == "anual":
+                return usuario.status_assinatura == "active"
+            return True  # Permite plano gratuito
 
-        if plano == "anual":
-            assinatura = db.execute(
-                text("SELECT status FROM assinaturas WHERE usuario_id = :usuario_id ORDER BY id DESC LIMIT 1"),
-                {"usuario_id": usuario.id}
-            ).fetchone()
-            return assinatura and assinatura.status == "active"
-
-        elif plano == "gratuito":
-            if usuario.ultima_geracao:
-                ultima_geracao = datetime.strptime(str(usuario.ultima_geracao), "%Y-%m-%d %H:%M:%S")
-                return (datetime.now() - ultima_geracao).days >= 30
-            return True
-
-        return False
     except Exception as e:
-        logging.error(f"Erro ao verificar permissão de plano: {e}")
-        return False
+        logging.error(f"Erro ao verificar permissão: {str(e)}")
+    
+    return False
 
 def calcular_semanas(tempo_melhoria):
     try:
@@ -280,28 +271,30 @@ def enviar_email_confirmacao_pagamento(email, nome="Cliente"):
 
 @app.route("/")
 def landing():
-    # Verifica primeiro a sessão
-    if session.get("logged_in"):
-        email = session["email"]
-    else:
-        # Se não estiver na sessão, verifica o email na URL
-        email = request.args.get("email")
+    # Debug: Verificar dados da sessão
+    print(f"Dados da sessão ao acessar /: {dict(session)}")
     
-    # Se encontrou um email (por sessão ou URL), verifica no BD
+    email = session.get("email") or request.args.get("email")
+    
     if email:
+        # Busca dados atualizados do usuário
         usuario = db.execute(
-            text("SELECT * FROM usuarios WHERE email = :email"), 
+            text("""
+                SELECT u.*, a.status as status_assinatura 
+                FROM usuarios u
+                LEFT JOIN assinaturas a ON u.id = a.usuario_id
+                WHERE u.email = :email
+                ORDER BY a.id DESC LIMIT 1
+            """), 
             {"email": email}
         ).fetchone()
-        
-        if usuario and usuario.plano == "anual":
-            # Atualiza a sessão se necessário
-            if not session.get("logged_in"):
-                session["logged_in"] = True
-                session["email"] = email
-                session["plano"] = "anual"
-                session["assinatura_ativa"] = True
-    
+
+        if usuario:
+            session["logged_in"] = True
+            session["email"] = email
+            session["plano"] = usuario.plano
+            session["assinatura_ativa"] = usuario.status_assinatura == "active"
+
     return render_template(
         "landing.html",
         logged_in=session.get("logged_in", False),
@@ -454,24 +447,27 @@ def check_user_status():
     
     try:
         usuario = db.execute(
-            text("SELECT * FROM usuarios WHERE email = :email"),
+            text("""
+                SELECT u.*, a.status as status_assinatura
+                FROM usuarios u
+                LEFT JOIN assinaturas a ON u.id = a.usuario_id
+                WHERE u.email = :email
+                ORDER BY a.id DESC LIMIT 1
+            """),
             {"email": email}
         ).fetchone()
 
         if usuario:
-            assinatura = db.execute(
-                text("SELECT status FROM assinaturas WHERE usuario_id = :usuario_id ORDER BY id DESC LIMIT 1"),
-                {"usuario_id": usuario.id}
-            ).fetchone()
-            
             return jsonify({
                 "logged_in": True,
                 "plano": usuario.plano,
-                "assinatura_ativa": assinatura and assinatura.status == "active"
+                "assinatura_ativa": usuario.status_assinatura == "active"
             })
+        
         return jsonify({"logged_in": False})
+
     except Exception as e:
-        logging.error(f"Erro ao verificar status do usuário: {e}")
+        logging.error(f"Erro ao verificar status: {str(e)}")
         return jsonify({"error": "Erro interno"}), 500
 
 @app.route("/logout", methods=["POST"])

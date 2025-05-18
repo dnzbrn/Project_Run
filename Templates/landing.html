@@ -492,36 +492,53 @@
       });
   }
 
-  // Funções de geração de planos
-  function selecionarPlano(plano) {
-    const assinaturaAtiva = localStorage.getItem('treinorun_assinatura_ativa') === 'true';
-    const email = localStorage.getItem('treinorun_email');
-    
-    if (assinaturaAtiva && plano === 'anual' && email) {
-      // Se já tem assinatura, preenche o email automaticamente e envia o formulário
-      const modal = document.getElementById('planoModal');
-      const formId = modal.dataset.formId;
-      const form = document.getElementById(formId);
-      
-      const inputPlano = document.createElement('input');
-      inputPlano.type = 'hidden';
-      inputPlano.name = 'plano';
-      inputPlano.value = plano;
-      form.appendChild(inputPlano);
-      
-      const inputEmail = document.createElement('input');
-      inputEmail.type = 'hidden';
-      inputEmail.name = 'email';
-      inputEmail.value = email;
-      form.appendChild(inputEmail);
-      
-      form.submit();
-      return;
+function selecionarPlano(plano) {
+    // 1. Verificação mais robusta da assinatura
+    const assinaturaAtiva = localStorage.getItem('treinorun_assinatura_ativa') === 'true' || 
+                          sessionStorage.getItem('assinatura_ativa') === 'true' ||
+                          {% if session.get('assinatura_ativa') %}true{% else %}false{% endif %};
+
+    // 2. Modificação no fluxo para assinantes
+    if (assinaturaAtiva && plano === 'anual') {
+        const formId = document.getElementById('planoModal').dataset.formId;
+        const form = document.getElementById(formId);
+
+        // Limpa inputs anteriores para evitar duplicação
+        document.querySelectorAll('input[name="plano"], input[name="email"]').forEach(el => el.remove());
+
+        // Adiciona os campos ocultos
+        const inputPlano = document.createElement('input');
+        inputPlano.type = 'hidden';
+        inputPlano.name = 'plano';
+        inputPlano.value = 'anual';
+        form.appendChild(inputPlano);
+
+        // Obtém email de múltiplas fontes (com fallback)
+        const email = localStorage.getItem('treinorun_email') || 
+                    sessionStorage.getItem('email') || 
+                    '{{ session.get("email", "") }}';
+        
+        if (email) {
+            const inputEmail = document.createElement('input');
+            inputEmail.type = 'hidden';
+            inputEmail.name = 'email';
+            inputEmail.value = email;
+            form.appendChild(inputEmail);
+        }
+
+        // 3. Define a action correta baseada no formId
+        form.action = formId === 'formCorrida' ? '/generate' : '/generatePace';
+        form.submit();
+        return;
     }
-    
+
+    // Restante do código original para não-assinantes...
     const modal = document.getElementById('planoModal');
     const formId = modal.dataset.formId;
     const form = document.getElementById(formId);
+
+    // Limpa inputs anteriores
+    document.querySelectorAll('input[name="plano"]').forEach(el => el.remove());
 
     const inputPlano = document.createElement('input');
     inputPlano.type = 'hidden';
@@ -531,7 +548,8 @@
 
     fecharModal();
     mostrarEmailModal();
-  }
+}
+
 
   // Funções de navegação entre steps
   function nextStep(formPrefix, currentStep, nextStepNumber) {
