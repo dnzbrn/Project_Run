@@ -1021,6 +1021,67 @@ def obter_detalhes_pagamento(id_pagamento):
 # INICIALIZAÇÃO
 # ================================================
 
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        email = request.form.get("email")
+
+        if not email:
+            return render_template_string("<p>Email é obrigatório</p>")
+
+        try:
+            usuario = db.execute(
+                text("SELECT * FROM usuarios WHERE email = :email"),
+                {"email": email}
+            ).fetchone()
+
+            if usuario and usuario.plano == "anual":
+                session["email"] = usuario.email
+                session["plano"] = "anual"
+                return redirect(url_for("seutreino"))
+            else:
+                return render_template_string("""
+                    <p>Email não encontrado ou sem plano ativo.</p>
+                    <a href="{{ url_for('landing') }}">Voltar</a>
+                """)
+        except Exception as e:
+            logging.error(f"Erro no login: {e}")
+            return "Erro ao tentar login.", 500
+
+    return render_template_string("""
+        <!DOCTYPE html>
+        <html lang="pt-BR">
+        <head><meta charset="UTF-8"><title>Login</title></head>
+        <body>
+            <h2>Login com E-mail</h2>
+            <form method="POST">
+                <input type="email" name="email" placeholder="Seu e-mail" required>
+                <button type="submit">Entrar</button>
+            </form>
+        </body>
+        </html>
+    """)
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("landing"))
+
+@app.before_request
+def carregar_usuario_da_sessao():
+    email = session.get("email")
+    if email:
+        try:
+            usuario = db.execute(
+                text("SELECT plano FROM usuarios WHERE email = :email"),
+                {"email": email}
+            ).fetchone()
+            if usuario:
+                session["plano"] = usuario.plano
+        except Exception as e:
+            logging.error(f"Erro ao atualizar sessão do usuário: {e}")
+
+
 if __name__ == "__main__":
     from waitress import serve
     logging.info("Iniciando servidor TreinoRun...")

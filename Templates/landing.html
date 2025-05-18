@@ -64,20 +64,25 @@
     </svg>
   </button>
   
-  <div id="sideMenu" class="fixed left-0 top-0 h-full w-64 bg-white shadow-xl transform -translate-x-full transition-transform duration-300 z-40">
-    <div class="p-4 border-b border-gray-200">
-      <h3 class="text-xl font-bold text-green-600">Menu</h3>
-    </div>
-    <nav class="p-4">
-      <ul class="space-y-3">
-        <li><a href="/" class="block py-2 px-4 rounded bg-green-50 text-green-600 font-medium">Home</a></li>
-        <li><a href="#formularios" class="block py-2 px-4 rounded hover:bg-gray-100">Criar Treino</a></li>
-        <li><a href="/blog" class="block py-2 px-4 rounded hover:bg-gray-100">Dicas</a></li>
-        <li><button onclick="abrirCalendario()" class="w-full text-left py-2 px-4 rounded hover:bg-gray-100">Calendário de Corridas</button></li>
-        <li><a href="#duvidas" class="block py-2 px-4 rounded hover:bg-gray-100">Tire Dúvidas</a></li>
-      </ul>
-    </nav>
+<div id="sideMenu" class="fixed left-0 top-0 h-full w-64 bg-white shadow-xl transform -translate-x-full transition-transform duration-300 z-40">
+  <div class="p-4 border-b border-gray-200">
+    <h3 class="text-xl font-bold text-green-600">Menu</h3>
   </div>
+  <nav class="p-4">
+    <ul class="space-y-3">
+      <li><a href="/" class="block py-2 px-4 rounded bg-green-50 text-green-600 font-medium">Home</a></li>
+      <li><a href="#formularios" class="block py-2 px-4 rounded hover:bg-gray-100">Criar Treino</a></li>
+      <li><a href="/blog" class="block py-2 px-4 rounded hover:bg-gray-100">Dicas</a></li>
+      <li><button onclick="abrirCalendario()" class="w-full text-left py-2 px-4 rounded hover:bg-gray-100">Calendário de Corridas</button></li>
+      <li><a href="#duvidas" class="block py-2 px-4 rounded hover:bg-gray-100">Tire Dúvidas</a></li>
+
+      {% if session.get("plano") == "anual" %}
+        <li><a href="/logout" class="block py-2 px-4 rounded hover:bg-gray-100 text-red-600 font-medium">Sair da Conta</a></li>
+      {% else %}
+        <li><a href="/login" class="block py-2 px-4 rounded hover:bg-gray-100 text-blue-600 font-medium">Acessar Conta</a></li>
+      {% endif %}
+    </ul>
+  </nav>
 </div>
 
 <!-- Modal Calendário de Corridas -->
@@ -197,10 +202,11 @@
 </section>
 
 <!-- Seção de Planos -->
+{% if session.get("plano") != "anual" %}
+<!-- Seção de Planos -->
 <section class="py-16 bg-white text-center fade-in">
   <h2 class="text-4xl font-bold text-green-700">Escolha o Plano Ideal para Você</h2>
   <div class="mt-10 flex flex-wrap justify-center gap-8">
-
     <!-- Plano Básico -->
     <div class="bg-gray-100 p-6 rounded-lg shadow-md w-full max-w-sm card-hover">
       <h3 class="text-2xl font-bold text-green-600">Plano Básico (Grátis)</h3>
@@ -234,9 +240,9 @@
         </button>
       </form>
     </div>
-
   </div>
 </section>
+{% endif %}
 
 <!-- Seção de Depoimentos -->
 <section class="py-16 bg-gray-100 text-center fade-in">
