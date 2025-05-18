@@ -591,21 +591,20 @@ function selecionarPlano(plano) {
   }
 
 function mostrarModal(formId) {
-  const assinaturaAtiva =
+  // Mais robusto: evita erro de template se sessão estiver ausente
+  const assinaturaAtiva = 
     localStorage.getItem('treinorun_assinatura_ativa') === 'true' ||
     sessionStorage.getItem('assinatura_ativa') === 'true' ||
-    {{ 'true' if session.get('assinatura_ativa') else 'false' }};
+    '{{ session.get("assinatura_ativa", False) | string | lower }}' === 'true';
 
   if (assinaturaAtiva) {
     const form = document.getElementById(formId);
 
-    // Limpar campos duplicados (caso o usuário tente várias vezes)
     ['plano', 'email'].forEach(name => {
       const old = form.querySelector(`input[name="${name}"]`);
       if (old) old.remove();
     });
 
-    // Inserir campos automaticamente
     const planoInput = document.createElement('input');
     planoInput.type = 'hidden';
     planoInput.name = 'plano';
@@ -626,11 +625,11 @@ function mostrarModal(formId) {
     return;
   }
 
-  // Se não for assinante, mostra o modal
   const modal = document.getElementById('planoModal');
   modal.classList.remove('hidden');
   modal.dataset.formId = formId;
 }
+
 
 
   function abrirCalendario() {
@@ -640,6 +639,14 @@ function mostrarModal(formId) {
   function fecharCalendario() {
     document.getElementById('calendarioModal').classList.add('hidden');
   }
+
+function fecharModal() {
+  const modal = document.getElementById('planoModal');
+  if (modal) {
+    modal.classList.add('hidden');
+  }
+}
+
 </script>
 </body>
 </html>
