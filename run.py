@@ -122,22 +122,35 @@ def validar_assinatura(body, signature):
 
 def pode_gerar_plano(email, plano):
     try:
+        # Verifica se o usuário está na sessão como logado
+        if session.get("logged_in") and session.get("email") == email:
+            if session.get("assinatura_ativa"):
+                return True
+            if plano == "gratuito":
+                if session.get("ultima_geracao"):
+                    ultima_geracao = datetime.strptime(str(session["ultima_geracao"]), "%Y-%m-%d %H:%M:%S")
+                    return (datetime.now() - ultima_geracao).days >= 30
+                return True
+            return False
+
+        # Se não estiver na sessão, verifica no banco de dados
         usuario = db.execute(
             text("SELECT * FROM usuarios WHERE email = :email"),
             {"email": email}
         ).fetchone()
 
+        if not usuario:
+            return True  # Permite que novos usuários gerem o primeiro plano gratuito
+
         if plano == "anual":
-            if usuario:
-                assinatura = db.execute(
-                    text("SELECT status FROM assinaturas WHERE usuario_id = :usuario_id ORDER BY id DESC LIMIT 1"),
-                    {"usuario_id": usuario.id}
-                ).fetchone()
-                return assinatura and assinatura.status == "active"
-            return False
+            assinatura = db.execute(
+                text("SELECT status FROM assinaturas WHERE usuario_id = :usuario_id ORDER BY id DESC LIMIT 1"),
+                {"usuario_id": usuario.id}
+            ).fetchone()
+            return assinatura and assinatura.status == "active"
 
         elif plano == "gratuito":
-            if usuario and usuario.ultima_geracao:
+            if usuario.ultima_geracao:
                 ultima_geracao = datetime.strptime(str(usuario.ultima_geracao), "%Y-%m-%d %H:%M:%S")
                 return (datetime.now() - ultima_geracao).days >= 30
             return True
@@ -266,22 +279,34 @@ def enviar_email_confirmacao_pagamento(email, nome="Cliente"):
 # ================================================
 
 @app.route("/")
-@limiter.limit("100 per hour")
 def landing():
-    try:
-        return render_template("landing.html")
-    except Exception as e:
-        logging.error(f"Erro ao renderizar landing.html: {e}")
-        return render_template_string("""
-            <!DOCTYPE html>
-            <html>
-            <body>
-                <h1>TreinoRun - Página Inicial</h1>
-                <p>Aplicação está funcionando, mas o template não foi carregado.</p>
-                <a href="/seutreino">Criar Treino</a>
-            </body>
-            </html>
-        """), 200
+    # Verifica primeiro a sessão
+    if session.get("logged_in"):
+        email = session["email"]
+    else:
+        # Se não estiver na sessão, verifica o email na URL
+        email = request.args.get("email")
+    
+    # Se encontrou um email (por sessão ou URL), verifica no BD
+    if email:
+        usuario = db.execute(
+            text("SELECT * FROM usuarios WHERE email = :email"), 
+            {"email": email}
+        ).fetchone()
+        
+        if usuario and usuario.plano == "anual":
+            # Atualiza a sessão se necessário
+            if not session.get("logged_in"):
+                session["logged_in"] = True
+                session["email"] = email
+                session["plano"] = "anual"
+                session["assinatura_ativa"] = True
+    
+    return render_template(
+        "landing.html",
+        logged_in=session.get("logged_in", False),
+        email=session.get("email", "")
+    )
 
 @app.route("/blog")
 @limiter.limit("100 per hour")
@@ -325,12 +350,8 @@ def seutreino():
 @limiter.limit("100 per hour")
 def sucesso():
     try:
-        email = session.get("email")
-
-        if not email:
-            # Se o email não está na sessão, tenta recuperar da URL (opcional)
-            email = request.args.get("email")
-
+        email = session.get("email") or request.args.get("email")
+        
         if email:
             usuario = db.execute(
                 text("SELECT * FROM usuarios WHERE email = :email"),
@@ -338,17 +359,24 @@ def sucesso():
             ).fetchone()
 
             if usuario:
-                # Garante que o plano e email estejam corretos na sessão
+                # Armazena informações do usuário na sessão
+                session["logged_in"] = True
+                session["email"] = usuario.email
                 session["plano"] = usuario.plano
-                session["email"] = usuario.email  # Atualiza email também para garantir
+                
+                # Verifica assinatura ativa
+                assinatura = db.execute(
+                    text("SELECT status FROM assinaturas WHERE usuario_id = :usuario_id ORDER BY id DESC LIMIT 1"),
+                    {"usuario_id": usuario.id}
+                ).fetchone()
+                
+                session["assinatura_ativa"] = assinatura and assinatura.status == "active"
             else:
                 logging.warning(f"Usuário não encontrado para email: {email}")
         else:
             logging.warning("Nenhum email encontrado na sessão ou URL.")
 
-        # Renderiza a página de sucesso normal
         return render_template("sucesso.html")
-
     except Exception as e:
         logging.error(f"Erro ao renderizar sucesso.html: {e}")
         return render_template_string("""
@@ -417,6 +445,47 @@ def resultado():
         </body>
         </html>
         """, 200
+
+@app.route("/check_user_status", methods=["GET"])
+def check_user_status():
+    email = request.args.get("email")
+    if not email:
+        return jsonify({"error": "Email não fornecido"}), 400
+    
+    try:
+        usuario = db.execute(
+            text("SELECT * FROM usuarios WHERE email = :email"),
+            {"email": email}
+        ).fetchone()
+
+        if usuario:
+            assinatura = db.execute(
+                text("SELECT status FROM assinaturas WHERE usuario_id = :usuario_id ORDER BY id DESC LIMIT 1"),
+                {"usuario_id": usuario.id}
+            ).fetchone()
+            
+            return jsonify({
+                "logged_in": True,
+                "plano": usuario.plano,
+                "assinatura_ativa": assinatura and assinatura.status == "active"
+            })
+        return jsonify({"logged_in": False})
+    except Exception as e:
+        logging.error(f"Erro ao verificar status do usuário: {e}")
+        return jsonify({"error": "Erro interno"}), 500
+
+@app.route("/logout", methods=["POST"])
+def logout():
+    try:
+        session.clear()
+        db.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        logging.error(f"Erro ao fazer logout: {e}")
+        db.rollback()
+        return jsonify({"error": "Erro ao fazer logout"}), 500
+
+
 
 # ================================================
 # ROTAS DE GERAÇÃO DE PLANOS

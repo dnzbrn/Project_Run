@@ -37,11 +37,21 @@
       background: #10b981;
       transition: width 0.3s ease;
     }
-    #planoModal, #emailModal, #calendarioModal {
+    #planoModal, #emailModal, #calendarioModal, #loginModal {
       transition: opacity 0.3s ease;
     }
     .border-red-500 {
       border-color: #ef4444;
+    }
+    #loginButton {
+      transition: all 0.3s ease;
+      background-color: #f0fdf4;
+      border: 2px solid #22c55e;
+      padding: 0.5rem 1rem;
+    }
+    #loginButton:hover {
+      transform: scale(1.05);
+      background-color: #dcfce7;
     }
   </style>
 
@@ -55,6 +65,22 @@
   </script>
 </head>
 <body class="bg-gray-50 text-gray-900">
+
+{% if logged_in %}
+<div class="fixed top-0 left-0 right-0 bg-green-600 text-white p-4 z-50 shadow-md">
+  <div class="container mx-auto flex justify-between items-center">
+    <span>Olá, {{ email }}! Seu plano anual está ativo.</span>
+    <div class="flex space-x-4">
+      <a href="/seutreino" class="bg-white text-green-600 px-4 py-2 rounded-lg font-bold hover:bg-gray-100 transition">
+        Criar Novo Treino
+      </a>
+      <button onclick="fazerLogout()" class="bg-red-500 text-white px-4 py-2 rounded-lg font-bold hover:bg-red-600 transition">
+        Sair
+      </button>
+    </div>
+  </div>
+</div>
+{% endif %}
 
 <!-- Menu Lateral -->
 <div class="fixed left-0 top-0 z-50">
@@ -75,238 +101,238 @@
         <li><a href="/blog" class="block py-2 px-4 rounded hover:bg-gray-100">Dicas</a></li>
         <li><button onclick="abrirCalendario()" class="w-full text-left py-2 px-4 rounded hover:bg-gray-100">Calendário de Corridas</button></li>
         <li><a href="#duvidas" class="block py-2 px-4 rounded hover:bg-gray-100">Tire Dúvidas</a></li>
+        <li>
+          <button onclick="fazerLogout()" class="w-full text-left py-2 px-4 rounded hover:bg-gray-100 text-red-600 hidden" id="logoutButton">
+            Sair
+          </button>
+        </li>
       </ul>
     </nav>
   </div>
 </div>
 
-<!-- Modal Calendário de Corridas -->
-<div id="calendarioModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
-  <div class="bg-white p-6 rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-    <div class="flex justify-between items-center mb-4">
-      <h3 class="text-2xl font-bold text-green-600">Calendário de Corridas</h3>
-      <button onclick="fecharCalendario()" class="text-gray-500 hover:text-gray-700">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
-    </div>
-    <div id="eventosContainer" class="grid grid-cols-1 md:grid-cols-2 gap-6">
-      <div class="flex justify-center py-8">
-        <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-green-600"></div>
-      </div>
-    </div>
-  </div>
+<!-- Botão de Login/Logout -->
+<div class="fixed right-0 top-0 z-50 m-4">
+  <button id="loginButton" class="p-2 rounded-lg shadow-lg focus:outline-none hidden">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-gray-800" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+    </svg>
+  </button>
 </div>
 
-<!-- Seção Hero -->
-<header class="bg-gradient-to-r from-green-500 to-blue-500 text-white py-16 text-center fade-in">
-  <h1 class="text-5xl font-bold">Supere seus limites na corrida!</h1>
-  <p class="mt-4 text-lg">Planos de treino personalizados para você correr mais rápido e com segurança.</p>
-  <a href="#formularios" class="mt-6 inline-block bg-white text-green-600 font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-gray-100 transition">
-    Teste Agora
-  </a>
-</header>
-
-<!-- Seção de Formulários -->
-<section id="formularios" class="py-16 bg-gray-100 text-center fade-in">
-  <h2 class="text-4xl font-bold text-green-700">Monte Seu Treino Agora</h2>
-  <div class="mt-10 flex flex-wrap justify-center gap-10">
-    
-    <!-- Formulário de Corrida -->
-    <div class="bg-white p-8 rounded-lg shadow-2xl border-2 border-green-600 w-full max-w-md card-hover">
-      <h3 class="text-2xl font-bold text-green-600">🏃‍♂️ Criar Planilha de Corrida</h3>
-      <div class="progress-bar mt-4" id="progressStep">
-        <div class="progress-bar-fill" style="width: 20%;"></div>
-      </div>
-      <form id="formCorrida" action="/generate" method="POST">
-        <div id="step1" class="step step-active">
-          <label class="block text-lg font-medium mt-4">Qual é o seu objetivo?</label>
-          <input type="text" name="objetivo" placeholder="Ex.: Correr 5km em 2 meses" class="w-full mt-2 rounded-lg border-gray-300 shadow-sm focus:ring-green-600 focus:border-green-600" required>
-          <button type="button" onclick="nextStep('step', 1, 2)" class="mt-6 w-full bg-green-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-green-700 transition">Próximo</button>
-        </div>
-        <div id="step2" class="step hidden-step">
-          <label class="block text-lg font-medium mt-4">Em quanto tempo gostaria de melhorar?</label>
-          <input type="text" name="tempo_melhoria" placeholder="Ex.: 2 meses" class="w-full mt-2 rounded-lg border-gray-300 shadow-sm focus:ring-green-600 focus:border-green-600" required>
-          <button type="button" onclick="nextStep('step', 2, 3)" class="mt-6 w-full bg-green-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-green-700 transition">Próximo</button>
-        </div>
-        <div id="step3" class="step hidden-step">
-          <label class="block text-lg font-medium mt-4">Qual é o seu nível atual?</label>
-          <select name="nivel" class="w-full mt-2 rounded-lg border-gray-300 shadow-sm focus:ring-green-600 focus:border-green-600" required>
-            <option value="Iniciante">Iniciante</option>
-            <option value="Intermediário">Intermediário</option>
-            <option value="Avançado">Avançado</option>
-          </select>
-          <button type="button" onclick="nextStep('step', 3, 4)" class="mt-6 w-full bg-green-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-green-700 transition">Próximo</button>
-        </div>
-        <div id="step4" class="step hidden-step">
-          <label class="block text-lg font-medium mt-4">Quantos dias por semana você pode treinar?</label>
-          <input type="number" name="dias" placeholder="Ex.: 3" class="w-full mt-2 rounded-lg border-gray-300 shadow-sm focus:ring-green-600 focus:border-green-600" required>
-          <button type="button" onclick="nextStep('step', 4, 5)" class="mt-6 w-full bg-green-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-green-700 transition">Próximo</button>
-        </div>
-        <div id="step5" class="step hidden-step">
-          <label class="block text-lg font-medium mt-4">Tempo diário (minutos):</label>
-          <input type="number" name="tempo" placeholder="Ex.: 30" class="w-full mt-2 rounded-lg border-gray-300 shadow-sm focus:ring-green-600 focus:border-green-600" required>
-          <button type="button" onclick="mostrarModal('formCorrida')" class="mt-6 w-full bg-green-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-green-700 transition">Gerar Plano</button>
-        </div>
-      </form>
-    </div>
-
-    <!-- Formulário de Pace -->
-    <div class="bg-white p-8 rounded-lg shadow-2xl border-2 border-blue-600 w-full max-w-md card-hover">
-      <h3 class="text-2xl font-bold text-blue-600">🚀 Melhorar o Pace</h3>
-      <div class="progress-bar mt-4" id="progressPace">
-        <div class="progress-bar-fill" style="width: 20%;"></div>
-      </div>
-      <form id="formPace" action="/generatePace" method="POST">
-        <div id="paceStep1" class="step step-active">
-          <label class="block text-lg font-medium mt-4">Qual é o seu objetivo de pace?</label>
-          <input type="text" name="objetivo" placeholder="Ex.: Reduzir pace de 10 para 5min/km" class="w-full mt-2 rounded-lg border-gray-300 shadow-sm focus:ring-blue-600 focus:border-blue-600" required>
-          <button type="button" onclick="nextStep('paceStep', 1, 2)" class="mt-6 w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-blue-700 transition">Próximo</button>
-        </div>
-        <!-- Continua na próxima parte -->
-
-        <div id="paceStep2" class="step hidden-step">
-          <label class="block text-lg font-medium mt-4">Em quanto tempo gostaria de melhorar?</label>
-          <input type="text" name="tempo_melhoria" placeholder="Ex.: 2 meses" class="w-full mt-2 rounded-lg border-gray-300 shadow-sm focus:ring-blue-600 focus:border-blue-600" required>
-          <button type="button" onclick="nextStep('paceStep', 2, 3)" class="mt-6 w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-blue-700 transition">Próximo</button>
-        </div>
-        <div id="paceStep3" class="step hidden-step">
-          <label class="block text-lg font-medium mt-4">Qual é o seu nível atual?</label>
-          <select name="nivel" class="w-full mt-2 rounded-lg border-gray-300 shadow-sm focus:ring-blue-600 focus:border-blue-600" required>
-            <option value="Iniciante">Iniciante</option>
-            <option value="Intermediário">Intermediário</option>
-            <option value="Avançado">Avançado</option>
-          </select>
-          <button type="button" onclick="nextStep('paceStep', 3, 4)" class="mt-6 w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-blue-700 transition">Próximo</button>
-        </div>
-        <div id="paceStep4" class="step hidden-step">
-          <label class="block text-lg font-medium mt-4">Quantos dias por semana você pode treinar?</label>
-          <input type="number" name="dias" placeholder="Ex.: 3" class="w-full mt-2 rounded-lg border-gray-300 shadow-sm focus:ring-blue-600 focus:border-blue-600" required>
-          <button type="button" onclick="nextStep('paceStep', 4, 5)" class="mt-6 w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-blue-700 transition">Próximo</button>
-        </div>
-        <div id="paceStep5" class="step hidden-step">
-          <label class="block text-lg font-medium mt-4">Tempo diário (minutos):</label>
-          <input type="number" name="tempo" placeholder="Ex.: 30" class="w-full mt-2 rounded-lg border-gray-300 shadow-sm focus:ring-blue-600 focus:border-blue-600" required>
-          <button type="button" onclick="mostrarModal('formPace')" class="mt-6 w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-blue-700 transition">Gerar Plano</button>
-        </div>
-      </form>
-    </div>
-
-  </div>
-</section>
-
-<!-- Seção de Planos -->
-<section class="py-16 bg-white text-center fade-in">
-  <h2 class="text-4xl font-bold text-green-700">Escolha o Plano Ideal para Você</h2>
-  <div class="mt-10 flex flex-wrap justify-center gap-8">
-
-    <!-- Plano Básico -->
-    <div class="bg-gray-100 p-6 rounded-lg shadow-md w-full max-w-sm card-hover">
-      <h3 class="text-2xl font-bold text-green-600">Plano Básico (Grátis)</h3>
-      <p class="mt-4 text-gray-700">Acesso limitado há 1 treino/mês</p>
-      <p class="mt-4 text-4xl font-bold text-green-600">R$ 0,00</p>
-      <ul class="mt-4 text-left text-gray-700 list-disc list-inside">
-        <li>1 plano mensal</li>
-        <li>Suporte por e-mail</li>
-      </ul>
-      <button class="mt-6 w-full bg-green-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-green-700 transition" onclick="selecionarPlano('gratuito')">
-        Comece Agora
-      </button>
-    </div>
-
-    <!-- Plano Completo -->
-    <div class="bg-gray-100 p-6 rounded-lg shadow-md w-full max-w-sm card-hover relative">
-      <span class="absolute top-0 right-0 bg-blue-600 text-white px-4 py-1 rounded-bl-lg">Mais Popular</span>
-      <h3 class="text-2xl font-bold text-blue-600">Plano Completo</h3>
-      <p class="mt-4 text-gray-700">Acesso ilimitado por menos de R$ 6/mês</p>
-      <p class="mt-4 text-4xl font-bold text-blue-600">R$ 59,90/ano</p>
-      <ul class="mt-4 text-left text-gray-700 list-disc list-inside">
-        <li>Planos ilimitados</li>
-        <li>Treinos personalizados</li>
-        <li>Suporte prioritário</li>
-      </ul>
-      <form id="formAssinarAnual" action="/iniciar_pagamento" method="POST">
-        <input type="hidden" name="plano" value="anual">
-        <input type="email" name="email" placeholder="Digite seu e-mail" class="w-full mt-4 p-2 rounded-lg border-gray-300 shadow-sm focus:ring-blue-600 focus:border-blue-600" required>
-        <button type="submit" class="mt-6 w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-blue-700 transition">
-          Assinar Agora
-        </button>
-      </form>
-    </div>
-
-  </div>
-</section>
-
-<!-- Seção de Depoimentos -->
-<section class="py-16 bg-gray-100 text-center fade-in">
-  <h2 class="text-4xl font-bold text-green-700">O que nossos clientes dizem</h2>
-  <div class="mt-10 flex flex-wrap justify-center gap-8">
-    <div class="bg-white p-6 rounded-lg shadow-md w-full max-w-sm">
-      <p class="text-gray-700 italic">"Melhorei meu pace em 2 meses! Recomendo demais!"</p>
-      <p class="mt-4 font-bold text-green-600">- Ana Silva</p>
-    </div>
-    <div class="bg-white p-6 rounded-lg shadow-md w-full max-w-sm">
-      <p class="text-gray-700 italic">"Os treinos são incríveis e super personalizados. Posso voltar e editar quantas vezes eu quiser!"</p>
-      <p class="mt-4 font-bold text-blue-600">- João Souza</p>
-    </div>
-  </div>
-</section>
-
-<!-- Seção de Tira Dúvidas -->
-<section id="duvidas" class="py-16 bg-white text-center fade-in">
-  <h2 class="text-4xl font-bold text-green-700">Tire suas Dúvidas</h2>
-  <div class="mt-10 max-w-2xl mx-auto bg-gray-100 p-8 rounded-lg shadow-md card-hover">
-    <p class="text-lg text-gray-700 mb-6">Tem alguma dúvida sobre nossos planos ou treinos? Nossa equipe está pronta para te ajudar!</p>
-    <a href="mailto:contato@treinorun.com.br" class="inline-block bg-green-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-green-700 transition">
-      Enviar E-mail
-    </a>
-    <p class="mt-4 text-gray-600">Entre em contato: contato@treinorun.com.br</p>
-  </div>
-</section>
-
-<!-- Rodapé -->
-<footer class="bg-gradient-to-r from-green-500 to-blue-500 text-white py-8 text-center">
-  <p class="text-lg">© 2025 Transforme sua Corrida. Todos os direitos reservados.</p>
-</footer>
-
-<!-- Modal de Escolha de Planos -->
-<div id="planoModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden" data-form-id="">
+<!-- Modal de Login -->
+<div id="loginModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
   <div class="bg-white p-8 rounded-lg shadow-2xl w-full max-w-md">
-    <h3 class="text-2xl font-bold text-green-600">Escolha seu Plano</h3>
-    <div class="mt-6 space-y-4">
-      <button onclick="selecionarPlano('gratuito')" class="w-full bg-green-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-green-700 transition">
-        Plano Básico (Grátis)
-      </button>
-      <button onclick="selecionarPlano('anual')" class="w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-blue-700 transition">
-        Plano Completo - R$ 59,90/ano
-      </button>
-    </div>
-    <button onclick="fecharModal()" class="mt-6 w-full bg-gray-300 text-gray-700 font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-gray-400 transition">
-      Fechar
-    </button>
-  </div>
-</div>
-
-<!-- Modal de E-mail -->
-<div id="emailModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden">
-  <div class="bg-white p-8 rounded-lg shadow-2xl w-full max-w-md">
-    <h3 class="text-2xl font-bold text-green-600">Informe seu e-mail</h3>
-    <form id="emailForm" onsubmit="return enviarFormularioComEmail(event)">
-      <input type="email" id="userEmail" placeholder="Digite seu e-mail" class="w-full mt-4 p-2 rounded-lg border-gray-300 shadow-sm focus:ring-green-600 focus:border-green-600" required>
+    <h3 class="text-2xl font-bold text-green-600">Acessar minha conta</h3>
+    <form id="loginForm" onsubmit="return fazerLogin(event)">
+      <input type="email" id="loginEmail" placeholder="Digite seu e-mail" class="w-full mt-4 p-2 rounded-lg border-gray-300 shadow-sm focus:ring-green-600 focus:border-green-600" required>
       <button type="submit" class="mt-6 w-full bg-green-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-green-700 transition">
-        Confirmar
+        Entrar
       </button>
     </form>
-    <button onclick="fecharEmailModal()" class="mt-4 w-full bg-gray-300 text-gray-700 font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-gray-400 transition">
+    <button onclick="fecharLoginModal()" class="mt-4 w-full bg-gray-300 text-gray-700 font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-gray-400 transition">
       Fechar
     </button>
   </div>
 </div>
 
-<!-- Scripts corrigidos -->
+<!-- Resto do seu HTML permanece igual... -->
+
 <script>
-  // Avançar etapas dos formulários
+  // Funções do menu lateral (mantidas do original)
+  document.addEventListener('DOMContentLoaded', function() {
+    const menuButton = document.getElementById('menuButton');
+    const sideMenu = document.getElementById('sideMenu');
+    
+    function toggleMenu() {
+      if (sideMenu.classList.contains('-translate-x-full')) {
+        sideMenu.classList.remove('-translate-x-full');
+        sideMenu.classList.add('translate-x-0');
+      } else {
+        sideMenu.classList.remove('translate-x-0');
+        sideMenu.classList.add('-translate-x-full');
+      }
+    }
+
+    menuButton.addEventListener('click', function(event) {
+      event.stopPropagation();
+      toggleMenu();
+    });
+
+    document.addEventListener('click', function(event) {
+      if (!sideMenu.contains(event.target) && !menuButton.contains(event.target)) {
+        if (!sideMenu.classList.contains('-translate-x-full')) {
+          sideMenu.classList.remove('translate-x-0');
+          sideMenu.classList.add('-translate-x-full');
+        }
+      }
+    });
+
+    document.addEventListener('keydown', function(event) {
+      if (event.key === "Escape") {
+        if (!sideMenu.classList.contains('-translate-x-full')) {
+          sideMenu.classList.remove('translate-x-0');
+          sideMenu.classList.add('-translate-x-full');
+        }
+      }
+    });
+
+    // Verifica status de login ao carregar a página
+    checkLoginStatus();
+  });
+
+  // Funções de login/logout
+  function checkLoginStatus() {
+    const loggedIn = localStorage.getItem('treinorun_logged_in') === 'true';
+    const loginButton = document.getElementById('loginButton');
+    const logoutButton = document.getElementById('logoutButton');
+    
+    if (loggedIn) {
+      const email = localStorage.getItem('treinorun_email');
+      if (loginButton) {
+        loginButton.classList.remove('hidden');
+        loginButton.innerHTML = `
+          <div class="flex items-center">
+            <span class="mr-2 text-sm">${email}</span>
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+          </div>
+        `;
+        loginButton.onclick = fazerLogout;
+      }
+      if (logoutButton) {
+        logoutButton.classList.remove('hidden');
+      }
+    } else {
+      if (loginButton) {
+        loginButton.classList.remove('hidden');
+        loginButton.innerHTML = `
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-gray-800" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          </svg>
+        `;
+        loginButton.onclick = mostrarLoginModal;
+      }
+      if (logoutButton) {
+        logoutButton.classList.add('hidden');
+      }
+    }
+  }
+
+  function mostrarLoginModal() {
+    document.getElementById('loginModal').classList.remove('hidden');
+  }
+
+  function fecharLoginModal() {
+    document.getElementById('loginModal').classList.add('hidden');
+  }
+
+  function fazerLogin(event) {
+    event.preventDefault();
+    const email = document.getElementById('loginEmail').value.trim();
+    
+    if (!email) {
+      alert('Por favor, digite seu e-mail');
+      return;
+    }
+
+    fetch(`/check_user_status?email=${encodeURIComponent(email)}`)
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('Erro na resposta do servidor');
+        }
+        return response.json();
+      })
+      .then(data => {
+        if (data.error) {
+          alert(data.error);
+          return;
+        }
+        
+        if (data.logged_in) {
+          // Armazena o login localmente
+          localStorage.setItem('treinorun_logged_in', 'true');
+          localStorage.setItem('treinorun_email', email);
+          localStorage.setItem('treinorun_plano', data.plano || 'gratuito');
+          localStorage.setItem('treinorun_assinatura_ativa', data.assinatura_ativa ? 'true' : 'false');
+          
+          // Atualiza a UI
+          checkLoginStatus();
+          fecharLoginModal();
+        } else {
+          alert('E-mail não encontrado. Por favor, crie um plano primeiro.');
+        }
+      })
+      .catch(error => {
+        console.error('Erro ao fazer login:', error);
+        alert('Erro ao verificar seu e-mail. Tente novamente.');
+      });
+  }
+
+  function fazerLogout() {
+    fetch('/logout', { method: 'POST' })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('Erro ao fazer logout');
+        }
+        return response.json();
+      })
+      .then(() => {
+        localStorage.removeItem('treinorun_logged_in');
+        localStorage.removeItem('treinorun_email');
+        localStorage.removeItem('treinorun_plano');
+        localStorage.removeItem('treinorun_assinatura_ativa');
+        checkLoginStatus();
+      })
+      .catch(error => {
+        console.error('Erro ao fazer logout:', error);
+        alert('Erro ao sair da conta. Tente novamente.');
+      });
+  }
+
+  // Funções de geração de planos (mantidas do original)
+  function selecionarPlano(plano) {
+    const assinaturaAtiva = localStorage.getItem('treinorun_assinatura_ativa') === 'true';
+    const email = localStorage.getItem('treinorun_email');
+    
+    if (assinaturaAtiva && plano === 'anual' && email) {
+      // Se já tem assinatura, preenche o email automaticamente e envia o formulário
+      const modal = document.getElementById('planoModal');
+      const formId = modal.dataset.formId;
+      const form = document.getElementById(formId);
+      
+      const inputPlano = document.createElement('input');
+      inputPlano.type = 'hidden';
+      inputPlano.name = 'plano';
+      inputPlano.value = plano;
+      form.appendChild(inputPlano);
+      
+      const inputEmail = document.createElement('input');
+      inputEmail.type = 'hidden';
+      inputEmail.name = 'email';
+      inputEmail.value = email;
+      form.appendChild(inputEmail);
+      
+      form.submit();
+      return;
+    }
+    
+    const modal = document.getElementById('planoModal');
+    const formId = modal.dataset.formId;
+    const form = document.getElementById(formId);
+
+    const inputPlano = document.createElement('input');
+    inputPlano.type = 'hidden';
+    inputPlano.name = 'plano';
+    inputPlano.value = plano;
+    form.appendChild(inputPlano);
+
+    fecharModal();
+    mostrarEmailModal();
+  }
+
+  // Resto das funções originais...
   function nextStep(formPrefix, currentStep, nextStepNumber) {
     const currentElement = document.getElementById(formPrefix + currentStep);
     const inputs = currentElement.querySelectorAll('input, select');
@@ -345,37 +371,22 @@
     }
   }
 
-  // Modal escolha de plano
   function mostrarModal(formId) {
     const modal = document.getElementById('planoModal');
     modal.classList.remove('hidden');
     modal.dataset.formId = formId;
   }
+
   function fecharModal() {
     document.getElementById('planoModal').classList.add('hidden');
   }
 
-  // Modal Email
   function mostrarEmailModal() {
     document.getElementById('emailModal').classList.remove('hidden');
   }
+
   function fecharEmailModal() {
     document.getElementById('emailModal').classList.add('hidden');
-  }
-
-  function selecionarPlano(plano) {
-    const modal = document.getElementById('planoModal');
-    const formId = modal.dataset.formId;
-    const form = document.getElementById(formId);
-
-    const inputPlano = document.createElement('input');
-    inputPlano.type = 'hidden';
-    inputPlano.name = 'plano';
-    inputPlano.value = plano;
-    form.appendChild(inputPlano);
-
-    fecharModal();
-    mostrarEmailModal();
   }
 
   function enviarFormularioComEmail(event) {
@@ -399,48 +410,14 @@
     }
     form.submit();
   }
-</script>
 
-
-<!-- NOVO SCRIPT DO MENU AQUI -->
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-  const menuButton = document.getElementById('menuButton');
-  const sideMenu = document.getElementById('sideMenu');
-  
-  function toggleMenu() {
-    if (sideMenu.classList.contains('-translate-x-full')) {
-      sideMenu.classList.remove('-translate-x-full');
-      sideMenu.classList.add('translate-x-0');
-    } else {
-      sideMenu.classList.remove('translate-x-0');
-      sideMenu.classList.add('-translate-x-full');
-    }
+  function abrirCalendario() {
+    document.getElementById('calendarioModal').classList.remove('hidden');
   }
 
-  menuButton.addEventListener('click', function(event) {
-    event.stopPropagation();
-    toggleMenu();
-  });
-
-  document.addEventListener('click', function(event) {
-    if (!sideMenu.contains(event.target) && !menuButton.contains(event.target)) {
-      if (!sideMenu.classList.contains('-translate-x-full')) {
-        sideMenu.classList.remove('translate-x-0');
-        sideMenu.classList.add('-translate-x-full');
-      }
-    }
-  });
-
-  document.addEventListener('keydown', function(event) {
-    if (event.key === "Escape") {
-      if (!sideMenu.classList.contains('-translate-x-full')) {
-        sideMenu.classList.remove('translate-x-0');
-        sideMenu.classList.add('-translate-x-full');
-      }
-    }
-  });
-});
+  function fecharCalendario() {
+    document.getElementById('calendarioModal').classList.add('hidden');
+  }
 </script>
 
 </body>
