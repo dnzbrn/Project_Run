@@ -590,45 +590,48 @@ function selecionarPlano(plano) {
     }
   }
 
-  function mostrarModal(formId) {
-    const modal = document.getElementById('planoModal');
-    modal.classList.remove('hidden');
-    modal.dataset.formId = formId;
-  }
+function mostrarModal(formId) {
+  const assinaturaAtiva =
+    localStorage.getItem('treinorun_assinatura_ativa') === 'true' ||
+    sessionStorage.getItem('assinatura_ativa') === 'true' ||
+    {{ 'true' if session.get('assinatura_ativa') else 'false' }};
 
-  function fecharModal() {
-    document.getElementById('planoModal').classList.add('hidden');
-  }
-
-  function mostrarEmailModal() {
-    document.getElementById('emailModal').classList.remove('hidden');
-  }
-
-  function fecharEmailModal() {
-    document.getElementById('emailModal').classList.add('hidden');
-  }
-
-  function enviarFormularioComEmail(event) {
-    event.preventDefault();
-
-    const email = document.getElementById('userEmail').value;
-    const modal = document.getElementById('planoModal');
-    const formId = modal.dataset.formId;
+  if (assinaturaAtiva) {
     const form = document.getElementById(formId);
 
-    const inputEmail = document.createElement('input');
-    inputEmail.type = 'hidden';
-    inputEmail.name = 'email';
-    inputEmail.value = email;
-    form.appendChild(inputEmail);
+    // Limpar campos duplicados (caso o usuário tente várias vezes)
+    ['plano', 'email'].forEach(name => {
+      const old = form.querySelector(`input[name="${name}"]`);
+      if (old) old.remove();
+    });
 
-    if (formId === 'formCorrida') {
-      form.action = '/generate';
-    } else if (formId === 'formPace') {
-      form.action = '/generatePace';
+    // Inserir campos automaticamente
+    const planoInput = document.createElement('input');
+    planoInput.type = 'hidden';
+    planoInput.name = 'plano';
+    planoInput.value = 'anual';
+    form.appendChild(planoInput);
+
+    const email = localStorage.getItem('treinorun_email') || '{{ session.get("email", "") }}';
+    if (email) {
+      const emailInput = document.createElement('input');
+      emailInput.type = 'hidden';
+      emailInput.name = 'email';
+      emailInput.value = email;
+      form.appendChild(emailInput);
     }
+
+    form.action = formId === 'formCorrida' ? '/generate' : '/generatePace';
     form.submit();
+    return;
   }
+
+  // Se não for assinante, mostra o modal
+  const modal = document.getElementById('planoModal');
+  modal.classList.remove('hidden');
+  modal.dataset.formId = formId;
+}
+
 
   function abrirCalendario() {
     document.getElementById('calendarioModal').classList.remove('hidden');
