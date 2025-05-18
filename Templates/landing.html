@@ -494,17 +494,20 @@
   }
 
 function selecionarPlano(plano) {
+  const modal = document.getElementById('planoModal');
+  const formId = modal.dataset.formId; // ✅ Corrigido: definido antes de usar
   const assinaturaAtiva = localStorage.getItem('treinorun_assinatura_ativa') === 'true';
 
   if (assinaturaAtiva && plano === 'anual') {
-    const formId = document.getElementById('planoModal').dataset.formId;
     const form = document.getElementById(formId);
 
+    // Limpa campos antigos
     ['plano', 'email'].forEach(name => {
       const old = form.querySelector(`input[name="${name}"]`);
       if (old) old.remove();
     });
 
+    // Adiciona campos escondidos
     const planoInput = document.createElement('input');
     planoInput.type = 'hidden';
     planoInput.name = 'plano';
@@ -525,10 +528,10 @@ function selecionarPlano(plano) {
     return;
   }
 
-  const modal = document.getElementById('planoModal');
+  // Se não for assinante, abre o modal normalmente
   modal.classList.remove('hidden');
-  modal.dataset.formId = formId;
 }
+
 
 
 function mostrarModal(formId) {
