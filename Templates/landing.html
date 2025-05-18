@@ -324,9 +324,9 @@
 <div id="emailModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden">
   <div class="bg-white p-8 rounded-lg shadow-2xl w-full max-w-md">
     <h3 class="text-2xl font-bold text-green-600">Informe seu e-mail</h3>
-    <form id="emailForm" onsubmit="return enviarFormularioComEmail(event)">
+    <form id="emailForm">
       <input type="email" id="userEmail" placeholder="Digite seu e-mail" class="w-full mt-4 p-2 rounded-lg border-gray-300 shadow-sm focus:ring-green-600 focus:border-green-600" required>
-      <button type="submit" class="mt-6 w-full bg-green-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-green-700 transition">
+      <button type="button" onclick="confirmarEmail()" class="mt-6 w-full bg-green-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-green-700 transition">
         Confirmar
       </button>
     </form>
@@ -428,48 +428,46 @@
   }
 
   function fazerLogin(event) {
-  event.preventDefault();
-  
-  const email = document.getElementById('loginEmail').value.trim();
-  
-  if (!email) {
-    alert('Por favor, digite seu e-mail');
-    return;
+    event.preventDefault();
+    
+    const email = document.getElementById('loginEmail').value.trim();
+    
+    if (!email) {
+      alert('Por favor, digite seu e-mail');
+      return;
+    }
+
+    fetch(`/check_user_status?email=${encodeURIComponent(email)}`)
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('Erro na resposta do servidor');
+        }
+        return response.json();
+      })
+      .then(data => {
+        if (data.error) {
+          alert(data.error);
+          return;
+        }
+
+        if (data.logged_in) {
+          localStorage.setItem('treinorun_logged_in', 'true');
+          localStorage.setItem('treinorun_email', email);
+          localStorage.setItem('treinorun_plano', data.plano || 'gratuito');
+          localStorage.setItem('treinorun_assinatura_ativa', data.assinatura_ativa ? 'true' : 'false');
+
+          checkLoginStatus();
+          fecharLoginModal();
+          window.location.reload();
+        } else {
+          alert('E-mail não encontrado. Por favor, crie um plano primeiro.');
+        }
+      })
+      .catch(error => {
+        console.error('Erro ao fazer login:', error);
+        alert('Erro ao verificar seu e-mail. Tente novamente.');
+      });
   }
-
-  fetch(`/check_user_status?email=${encodeURIComponent(email)}`)
-    .then(response => {
-      if (!response.ok) {
-        throw new Error('Erro na resposta do servidor');
-      }
-      return response.json();
-    })
-    .then(data => {
-      if (data.error) {
-        alert(data.error);
-        return;
-      }
-
-      if (data.logged_in) {
-        // ✅ Armazena os dados no localStorage corretamente
-        localStorage.setItem('treinorun_logged_in', 'true');
-        localStorage.setItem('treinorun_email', email);
-        localStorage.setItem('treinorun_plano', data.plano || 'gratuito');
-        localStorage.setItem('treinorun_assinatura_ativa', data.assinatura_ativa ? 'true' : 'false');
-
-        checkLoginStatus();        // Atualiza o botão
-        fecharLoginModal();        // Fecha modal
-        window.location.reload();  // Recarrega a página
-      } else {
-        alert('E-mail não encontrado. Por favor, crie um plano primeiro.');
-      }
-    })
-    .catch(error => {
-      console.error('Erro ao fazer login:', error);
-      alert('Erro ao verificar seu e-mail. Tente novamente.');
-    });
-}
-
 
   function fazerLogout() {
     fetch('/logout', { method: 'POST' })
@@ -485,7 +483,7 @@
         localStorage.removeItem('treinorun_plano');
         localStorage.removeItem('treinorun_assinatura_ativa');
         checkLoginStatus();
-        window.location.reload(); // Recarrega para remover a barra superior
+        window.location.reload();
       })
       .catch(error => {
         console.error('Erro ao fazer logout:', error);
@@ -493,65 +491,91 @@
       });
   }
 
-function selecionarPlano(plano) {
-  const modal = document.getElementById('planoModal');
-  const formId = modal.dataset.formId; // ✅ Corrigido: definido antes de usar
-  const assinaturaAtiva = localStorage.getItem('treinorun_assinatura_ativa') === 'true';
-
-  if (assinaturaAtiva && plano === 'anual') {
-    const form = document.getElementById(formId);
-
-    // Limpa campos antigos
-    ['plano', 'email'].forEach(name => {
-      const old = form.querySelector(`input[name="${name}"]`);
-      if (old) old.remove();
-    });
-
-    // Adiciona campos escondidos
-    const planoInput = document.createElement('input');
-    planoInput.type = 'hidden';
-    planoInput.name = 'plano';
-    planoInput.value = 'anual';
-    form.appendChild(planoInput);
-
-    const email = localStorage.getItem('treinorun_email');
-    if (email) {
-      const inputEmail = document.createElement('input');
-      inputEmail.type = 'hidden';
-      inputEmail.name = 'email';
-      inputEmail.value = email;
-      form.appendChild(inputEmail);
-    }
-
-    form.action = formId === 'formCorrida' ? '/generate' : '/generatePace';
-    form.submit();
-    return;
+  function nextStep(prefix, current, next) {
+    document.getElementById(`${prefix}${current}`).classList.remove('step-active');
+    document.getElementById(`${prefix}${current}`).classList.add('hidden-step');
+    
+    document.getElementById(`${prefix}${next}`).classList.remove('hidden-step');
+    document.getElementById(`${prefix}${next}`).classList.add('step-active');
+    
+    const progressPercentage = (next / 5) * 100;
+    document.getElementById(`progress${prefix === 'step' ? 'Step' : 'Pace'}`)
+      .querySelector('.progress-bar-fill').style.width = `${progressPercentage}%`;
   }
 
-  // Se não for assinante, abre o modal normalmente
-  modal.classList.remove('hidden');
-}
+  function mostrarModal(formId) {
+    const loggedIn = localStorage.getItem('treinorun_logged_in') === 'true';
+    const assinaturaAtiva = localStorage.getItem('treinorun_assinatura_ativa') === 'true';
+    
+    if (loggedIn && assinaturaAtiva) {
+      // Usuário com assinatura ativa - envia direto
+      const form = document.getElementById(formId);
+      
+      // Remove campos antigos se existirem
+      ['plano', 'email'].forEach(name => {
+        const input = form.querySelector(`input[name="${name}"]`);
+        if (input) input.remove();
+      });
+      
+      // Adiciona campos necessários
+      const planoInput = document.createElement('input');
+      planoInput.type = 'hidden';
+      planoInput.name = 'plano';
+      planoInput.value = 'anual';
+      form.appendChild(planoInput);
+      
+      const email = localStorage.getItem('treinorun_email');
+      if (email) {
+        const emailInput = document.createElement('input');
+        emailInput.type = 'hidden';
+        emailInput.name = 'email';
+        emailInput.value = email;
+        form.appendChild(emailInput);
+      }
+      
+      form.submit();
+    } else if (loggedIn) {
+      // Usuário logado mas sem assinatura ativa - mostra modal de planos
+      document.getElementById('planoModal').dataset.formId = formId;
+      document.getElementById('planoModal').classList.remove('hidden');
+    } else {
+      // Usuário não logado - mostra modal de email
+      document.getElementById('emailModal').classList.remove('hidden');
+      document.getElementById('planoModal').dataset.formId = formId;
+    }
+  }
 
+  function confirmarEmail() {
+    const email = document.getElementById('userEmail').value.trim();
+    if (!email) {
+      alert('Por favor, digite um e-mail válido');
+      return;
+    }
+    
+    document.getElementById('emailModal').classList.add('hidden');
+    document.getElementById('planoModal').classList.remove('hidden');
+  }
 
-
-function mostrarModal(formId) {
-  const assinaturaAtiva = localStorage.getItem('treinorun_assinatura_ativa') === 'true';
-
-  if (assinaturaAtiva) {
+  function selecionarPlano(plano) {
+    const modal = document.getElementById('planoModal');
+    const formId = modal.dataset.formId;
     const form = document.getElementById(formId);
-
+    
+    // Remove campos antigos se existirem
     ['plano', 'email'].forEach(name => {
-      const old = form.querySelector(`input[name="${name}"]`);
-      if (old) old.remove();
+      const input = form.querySelector(`input[name="${name}"]`);
+      if (input) input.remove();
     });
-
+    
+    // Adiciona plano selecionado
     const planoInput = document.createElement('input');
     planoInput.type = 'hidden';
     planoInput.name = 'plano';
-    planoInput.value = 'anual';
+    planoInput.value = plano;
     form.appendChild(planoInput);
-
-    const email = localStorage.getItem('treinorun_email');
+    
+    // Adiciona email se estiver no modal de email
+    const email = document.getElementById('userEmail')?.value || localStorage.getItem('treinorun_email');
     if (email) {
       const emailInput = document.createElement('input');
       emailInput.type = 'hidden';
@@ -559,20 +583,22 @@ function mostrarModal(formId) {
       emailInput.value = email;
       form.appendChild(emailInput);
     }
-
-    form.action = formId === 'formCorrida' ? '/generate' : '/generatePace';
+    
+    // Fecha os modais
+    modal.classList.add('hidden');
+    document.getElementById('emailModal').classList.add('hidden');
+    
+    // Envia o formulário
     form.submit();
-    return;
   }
 
-  // Se não for assinante
-  const modal = document.getElementById('planoModal');
-  modal.classList.remove('hidden');
-  modal.dataset.formId = formId;
-}
+  function fecharModal() {
+    document.getElementById('planoModal').classList.add('hidden');
+  }
 
-
-
+  function fecharEmailModal() {
+    document.getElementById('emailModal').classList.add('hidden');
+  }
 
   function abrirCalendario() {
     document.getElementById('calendarioModal').classList.remove('hidden');
@@ -581,14 +607,6 @@ function mostrarModal(formId) {
   function fecharCalendario() {
     document.getElementById('calendarioModal').classList.add('hidden');
   }
-
-function fecharModal() {
-  const modal = document.getElementById('planoModal');
-  if (modal) {
-    modal.classList.add('hidden');
-  }
-}
-
 </script>
 </body>
 </html>
