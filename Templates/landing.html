@@ -503,56 +503,56 @@
       .querySelector('.progress-bar-fill').style.width = `${progressPercentage}%`;
   }
 
-function mostrarModal(formId) {
-  // Verificação CONJUNTA server-side + client-side
-  const serverLoggedIn = {% if logged_in %}true{% else %}false{% endif %};
-  const serverAssinatura = {% if assinatura_ativa %}true{% else %}false{% endif %};
-  
-  const clientLoggedIn = localStorage.getItem('treinorun_logged_in') === 'true';
-  const clientAssinatura = localStorage.getItem('treinorun_assinatura_ativa') === 'true';
-
-  const isAssinante = serverAssinatura || clientAssinatura;
-  const isLoggedIn = serverLoggedIn || clientLoggedIn;
-
-  console.log('Status de Assinatura:', {
-    server: {loggedIn: serverLoggedIn, assinatura: serverAssinatura},
-    client: {loggedIn: clientLoggedIn, assinatura: clientAssinatura},
-    resultadoFinal: {isLoggedIn, isAssinante}
-  });
-
-  if (isLoggedIn && isAssinante) {
-    const form = document.getElementById(formId);
+  function mostrarModal(formId) {
+    // Verificação CONJUNTA server-side + client-side
+    const serverLoggedIn = {% if logged_in %}true{% else %}false{% endif %};
+    const serverAssinatura = {% if assinatura_ativa %}true{% else %}false{% endif %};
     
-    // Método mais confiável para limpar e adicionar campos
-    const clearAndAddFields = () => {
-      // Remove todos os campos ocultos existentes
-      document.querySelectorAll(`#${formId} input[type="hidden"]`).forEach(el => el.remove());
+    const clientLoggedIn = localStorage.getItem('treinorun_logged_in') === 'true';
+    const clientAssinatura = localStorage.getItem('treinorun_assinatura_ativa') === 'true';
+
+    const isAssinante = serverAssinatura || clientAssinatura;
+    const isLoggedIn = serverLoggedIn || clientLoggedIn;
+
+    console.log('Status de Assinatura:', {
+      server: {loggedIn: serverLoggedIn, assinatura: serverAssinatura},
+      client: {loggedIn: clientLoggedIn, assinatura: clientAssinatura},
+      resultadoFinal: {isLoggedIn, isAssinante}
+    });
+
+    if (isLoggedIn && isAssinante) {
+      const form = document.getElementById(formId);
       
-      // Adiciona novos campos
-      const addField = (name, value) => {
-        if (!value) return;
-        const input = document.createElement('input');
-        input.type = 'hidden';
-        input.name = name;
-        input.value = value;
-        form.appendChild(input);
+      // Método mais confiável para limpar e adicionar campos
+      const clearAndAddFields = () => {
+        // Remove todos os campos ocultos existentes
+        document.querySelectorAll(`#${formId} input[type="hidden"]`).forEach(el => el.remove());
+        
+        // Adiciona novos campos
+        const addField = (name, value) => {
+          if (!value) return;
+          const input = document.createElement('input');
+          input.type = 'hidden';
+          input.name = name;
+          input.value = value;
+          form.appendChild(input);
+        };
+
+        addField('plano', 'anual');
+        addField('email', '{{ email }}' || localStorage.getItem('treinorun_email'));
       };
 
-      addField('plano', 'anual');
-      addField('email', '{{ email }}' || localStorage.getItem('treinorun_email'));
-    };
+      clearAndAddFields();
+      form.submit();
+      return;
+    }
 
-    clearAndAddFields();
-    form.submit();
-    return;
+    // Somente mostra modal se não for assinante
+    if (!isAssinante) {
+      document.getElementById('planoModal').dataset.formId = formId;
+      document.getElementById('planoModal').classList.remove('hidden');
+    }
   }
-
-  // Somente mostra modal se não for assinante
-  if (!isAssinante) {
-    document.getElementById('planoModal').dataset.formId = formId;
-    document.getElementById('planoModal').classList.remove('hidden');
-  }
-}
 
   function confirmarEmail() {
     const email = document.getElementById('userEmail').value.trim();
@@ -616,32 +616,6 @@ function mostrarModal(formId) {
   function fecharCalendario() {
     document.getElementById('calendarioModal').classList.add('hidden');
   }
-
-
-<script>
-  // ... (todas as outras funções existentes)
-
-  // DEBUG TEMPORÁRIO - INÍCIO (remover após resolver o problema)
-  localStorage.setItem('debugMode', 'true');
-  window.debugAssinatura = function() {
-    return {
-      server: {
-        loggedIn: {% if logged_in %}true{% else %}false{% endif %},
-        assinatura: {% if assinatura_ativa %}true{% else %}false{% endif %}
-      },
-      client: {
-        loggedIn: localStorage.getItem('treinorun_logged_in'),
-        assinatura: localStorage.getItem('treinorun_assinatura_ativa')
-      }
-    };
-  };
-  console.log("Debug ativado. Use debugAssinatura() no console para verificar os status.");
-  // DEBUG TEMPORÁRIO - FIM
-
-</script>
-</body> <!-- Esta é a tag de fechamento do body -->
-</html>
-
 </script>
 </body>
 </html>
