@@ -69,7 +69,14 @@
 {% if logged_in %}
 <div class="fixed top-0 left-0 right-0 bg-green-600 text-white p-4 z-50 shadow-md">
   <div class="container mx-auto flex justify-between items-center">
-    <span>Olá, {{ email }}! Seu plano anual está ativo.</span>
+    <span>
+      Olá, {{ email }}! 
+      {% if assinatura_ativa %}
+        Seu plano anual está ativo.
+      {% else %}
+        Você está usando o plano gratuito.
+      {% endif %}
+    </span>
     <div class="flex space-x-4">
       <a href="/seutreino" class="bg-white text-green-600 px-4 py-2 rounded-lg font-bold hover:bg-gray-100 transition">
         Criar Novo Treino
@@ -234,7 +241,7 @@
 <section class="py-16 bg-white text-center fade-in">
   <h2 class="text-4xl font-bold text-green-700">Escolha o Plano Ideal para Você</h2>
   <div class="mt-10 flex flex-wrap justify-center gap-8">
-    <!-- Plano Básico -->
+    <!-- Plano Básico - Sempre visível -->
     <div class="bg-gray-100 p-6 rounded-lg shadow-md w-full max-w-sm card-hover">
       <h3 class="text-2xl font-bold text-green-600">Plano Básico (Grátis)</h3>
       <p class="mt-4 text-gray-700">Acesso limitado há 1 treino/mês</p>
@@ -248,7 +255,8 @@
       </button>
     </div>
 
-    <!-- Plano Completo -->
+    <!-- Plano Completo - Só mostra se não tiver assinatura ativa -->
+    {% if not assinatura_ativa %}
     <div class="bg-gray-100 p-6 rounded-lg shadow-md w-full max-w-sm card-hover relative">
       <span class="absolute top-0 right-0 bg-blue-600 text-white px-4 py-1 rounded-bl-lg">Mais Popular</span>
       <h3 class="text-2xl font-bold text-blue-600">Plano Completo</h3>
@@ -261,12 +269,30 @@
       </ul>
       <form id="formAssinarAnual" action="/iniciar_pagamento" method="POST">
         <input type="hidden" name="plano" value="anual">
-        <input type="email" name="email" placeholder="Digite seu e-mail" class="w-full mt-4 p-2 rounded-lg border-gray-300 shadow-sm focus:ring-blue-600 focus:border-blue-600" required>
+        <input type="email" name="email" placeholder="Digite seu e-mail" 
+               value="{{ email if email else '' }}"
+               class="w-full mt-4 p-2 rounded-lg border-gray-300 shadow-sm focus:ring-blue-600 focus:border-blue-600" required>
         <button type="submit" class="mt-6 w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-blue-700 transition">
           Assinar Agora
         </button>
       </form>
     </div>
+    {% else %}
+    <!-- Mensagem para usuários com assinatura ativa -->
+    <div class="bg-gray-100 p-6 rounded-lg shadow-md w-full max-w-sm card-hover relative border-2 border-green-500">
+      <h3 class="text-2xl font-bold text-green-600">Plano Ativo</h3>
+      <p class="mt-4 text-gray-700">Você já tem acesso ilimitado!</p>
+      <p class="mt-4 text-4xl font-bold text-green-600">Ativo</p>
+      <ul class="mt-4 text-left text-gray-700 list-disc list-inside">
+        <li>Planos ilimitados</li>
+        <li>Treinos personalizados</li>
+        <li>Suporte prioritário</li>
+      </ul>
+      <a href="/seutreino" class="mt-6 w-full inline-block bg-green-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-green-700 transition text-center">
+        Criar Novo Treino
+      </a>
+    </div>
+    {% endif %}
   </div>
 </section>
 
