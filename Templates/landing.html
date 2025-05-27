@@ -82,6 +82,18 @@
         <li><button onclick="abrirCalendario()" class="w-full text-left py-2 px-4 rounded hover:bg-gray-100">Calendário de Corridas</button></li>
         <li><a href="#duvidas" class="block py-2 px-4 rounded hover:bg-gray-100">Tire Dúvidas</a></li>
       </ul>
+<li>
+  {% if email %}
+    <div class="mt-4">
+      <p class="text-sm text-gray-600">Logado como:</p>
+      <p class="font-medium text-green-600">{{ email }}</p>
+      <a href="/logout" class="mt-2 inline-block text-red-600 hover:underline">Sair</a>
+    </div>
+  {% else %}
+    <a href="#formularios" class="block py-2 px-4 rounded hover:bg-gray-100">Login ao gerar treino</a>
+  {% endif %}
+</li>
+
     </nav>
   </div>
 </div>
@@ -106,13 +118,20 @@
 </div>
 
 <!-- Seção Hero -->
+
 <header class="bg-gradient-to-r from-green-500 to-blue-500 text-white py-16 text-center fade-in">
   <h1 class="text-5xl font-bold">Supere seus limites na corrida!</h1>
   <p class="mt-4 text-lg">Planos de treino personalizados para você correr mais rápido e com segurança.</p>
+  
+  {% if email %}
+    <p class="mt-2 text-sm">Bem-vindo, {{ email }} {% if assinatura_ativa %} (Assinante) {% else %} (Plano Gratuito) {% endif %}</p>
+  {% endif %}
+
   <a href="#formularios" class="mt-6 inline-block bg-white text-green-600 font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-gray-100 transition">
     Teste Agora
   </a>
 </header>
+
 
 <!-- Seção de Formulários -->
 <section id="formularios" class="py-16 bg-gray-100 text-center fade-in">
@@ -232,6 +251,7 @@
         <li>Treinos personalizados</li>
         <li>Suporte prioritário</li>
       </ul>
+{% if not assinatura_ativa %}
       <form id="formAssinarAnual" action="/iniciar_pagamento" method="POST">
         <input type="hidden" name="plano" value="anual">
         <input type="email" name="email" placeholder="Digite seu e-mail" class="w-full mt-4 p-2 rounded-lg border-gray-300 shadow-sm focus:ring-blue-600 focus:border-blue-600" required>
@@ -239,6 +259,9 @@
           Assinar Agora
         </button>
       </form>
+{% else %}
+  <p class="mt-6 text-green-600 font-bold">✔ Você já é assinante!</p>
+{% endif %}
     </div>
 
   </div>

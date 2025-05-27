@@ -127,25 +127,41 @@ def pode_gerar_plano(email, plano):
             {"email": email}
         ).fetchone()
 
+        if not usuario:
+            return False if plano == "anual" else True
+
         if plano == "anual":
-            if usuario:
-                assinatura = db.execute(
-                    text("SELECT status FROM assinaturas WHERE usuario_id = :usuario_id ORDER BY id DESC LIMIT 1"),
-                    {"usuario_id": usuario.id}
-                ).fetchone()
-                return assinatura and assinatura.status == "active"
+            # Primeiro tenta verificar na tabela assinaturas
+            assinatura = db.execute(
+                text("""
+                    SELECT status FROM assinaturas 
+                    WHERE usuario_id = :usuario_id 
+                    ORDER BY id DESC LIMIT 1
+                """),
+                {"usuario_id": usuario.id}
+            ).fetchone()
+
+            if assinatura and assinatura.status == "active":
+                return True
+
+            # Se não tiver na assinatura, verifica se no cadastro consta como plano anual
+            if usuario.plano == "anual":
+                return True
+
             return False
 
         elif plano == "gratuito":
-            if usuario and usuario.ultima_geracao:
-                ultima_geracao = datetime.strptime(str(usuario.ultima_geracao), "%Y-%m-%d %H:%M:%S")
-                return (datetime.now() - ultima_geracao).days >= 30
+            if usuario.ultima_geracao:
+                ultima = datetime.strptime(str(usuario.ultima_geracao), "%Y-%m-%d %H:%M:%S")
+                return (datetime.now() - ultima).days >= 30
             return True
 
         return False
+
     except Exception as e:
-        logging.error(f"Erro ao verificar permissão de plano: {e}")
+        logging.error(f"Erro na verificação de plano: {e}")
         return False
+
 
 def calcular_semanas(tempo_melhoria):
     try:
@@ -266,32 +282,35 @@ def enviar_email_confirmacao_pagamento(email, nome="Cliente"):
 # ================================================
 
 @app.route("/")
+@limiter.limit("100 per hour")
 def landing():
-    email = request.args.get("email")
-    assinatura_ativa = False
+    try:
+        email = session.get("email")
+        plano = session.get("plano", "gratuito")
+        assinatura_ativa = session.get("assinatura_ativa", False)
 
-    if email:
-        usuario = db.execute(
-            text("SELECT * FROM usuarios WHERE email = :email"),
-            {"email": email}
-        ).fetchone()
+        return render_template(
+            "landing.html",
+            email=email,
+            plano=plano,
+            assinatura_ativa=assinatura_ativa
+        )
 
-        if usuario:
-            assinatura = db.execute(
-                text("SELECT status FROM assinaturas WHERE usuario_id = :usuario_id ORDER BY id DESC LIMIT 1"),
-                {"usuario_id": usuario.id}
-            ).fetchone()
+    except Exception as e:
+        logging.error(f"Erro ao renderizar landing.html: {e}")
+        return render_template_string(f"""
+            <!DOCTYPE html>
+            <html>
+            <body>
+                <h1>TreinoRun - Página Inicial</h1>
+                <p>Aplicação está funcionando, mas o template não foi carregado.</p>
+                <p><strong>Email na sessão:</strong> {session.get("email", "Nenhum")}</p>
+                <p><strong>Plano:</strong> {session.get("plano", "gratuito")}</p>
+                <a href="/seutreino">Criar Treino</a>
+            </body>
+            </html>
+        """), 200
 
-            assinatura_ativa = assinatura and assinatura.status == "active"
-
-            session["email"] = email
-            session["assinatura_ativa"] = assinatura_ativa
-
-    return render_template(
-        "landing.html",
-        assinatura_ativa=assinatura_ativa,
-        email=email
-    )
 
 @app.route("/blog")
 @limiter.limit("100 per hour")
@@ -636,6 +655,45 @@ def send_plan_email():
     except Exception as e:
         logging.error(f"Erro ao enviar treino por e-mail: {str(e)}", exc_info=True)
         return jsonify({"message": "Erro interno ao enviar e-mail"}), 500
+
+@app.route("/login", methods=["POST"])
+def login():
+    email = request.form.get("email")
+
+    if not email:
+        return redirect(url_for('landing'))
+
+    usuario = db.execute(
+        text("SELECT * FROM usuarios WHERE email = :email"),
+        {"email": email}
+    ).fetchone()
+
+    assinatura_ativa = False
+    if usuario:
+        # Verifica na tabela assinaturas se tem ativa
+        assinatura = db.execute(
+            text("""
+                SELECT status FROM assinaturas 
+                WHERE usuario_id = :usuario_id 
+                ORDER BY id DESC LIMIT 1
+            """),
+            {"usuario_id": usuario.id}
+        ).fetchone()
+
+        if (assinatura and assinatura.status == "active") or usuario.plano == "anual":
+            assinatura_ativa = True
+
+    session["email"] = email
+    session["plano"] = "anual" if assinatura_ativa else "gratuito"
+    session["assinatura_ativa"] = assinatura_ativa
+
+    return redirect(url_for('landing'))
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for('landing'))
+
 
 
 
