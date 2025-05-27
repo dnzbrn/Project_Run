@@ -82,18 +82,6 @@
         <li><button onclick="abrirCalendario()" class="w-full text-left py-2 px-4 rounded hover:bg-gray-100">Calendário de Corridas</button></li>
         <li><a href="#duvidas" class="block py-2 px-4 rounded hover:bg-gray-100">Tire Dúvidas</a></li>
       </ul>
-<li>
-  {% if email %}
-    <div class="mt-4">
-      <p class="text-sm text-gray-600">Logado como:</p>
-      <p class="font-medium text-green-600">{{ email }}</p>
-      <a href="/logout" class="mt-2 inline-block text-red-600 hover:underline">Sair</a>
-    </div>
-  {% else %}
-    <a href="#formularios" class="block py-2 px-4 rounded hover:bg-gray-100">Login ao gerar treino</a>
-  {% endif %}
-</li>
-
     </nav>
   </div>
 </div>
@@ -116,6 +104,26 @@
     </div>
   </div>
 </div>
+
+<!-- Top Navigation -->
+<div class="w-full bg-white shadow-md py-4 px-6 flex justify-between items-center">
+  <a href="/" class="text-2xl font-bold text-green-600">TreinoRun</a>
+  <div>
+    {% if email %}
+      <span class="text-sm text-gray-700 mr-4">
+        Bem-vindo, <span class="text-green-600 font-semibold">{{ email }}</span>
+      </span>
+      <a href="/logout" class="bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-lg shadow">
+        Sair
+      </a>
+    {% else %}
+      <button onclick="abrirLoginModal()" class="bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-lg shadow">
+        Login
+      </button>
+    {% endif %}
+  </div>
+</div>
+
 
 <!-- Seção Hero -->
 
@@ -222,6 +230,7 @@
 </section>
 
 <!-- Seção de Planos -->
+{% if not assinatura_ativa %}
 <section class="py-16 bg-white text-center fade-in">
   <h2 class="text-4xl font-bold text-green-700">Escolha o Plano Ideal para Você</h2>
   <div class="mt-10 flex flex-wrap justify-center gap-8">
@@ -229,7 +238,7 @@
     <!-- Plano Básico -->
     <div class="bg-gray-100 p-6 rounded-lg shadow-md w-full max-w-sm card-hover">
       <h3 class="text-2xl font-bold text-green-600">Plano Básico (Grátis)</h3>
-      <p class="mt-4 text-gray-700">Acesso limitado há 1 treino/mês</p>
+      <p class="mt-4 text-gray-700">Acesso limitado a 1 treino/mês</p>
       <p class="mt-4 text-4xl font-bold text-green-600">R$ 0,00</p>
       <ul class="mt-4 text-left text-gray-700 list-disc list-inside">
         <li>1 plano mensal</li>
@@ -251,7 +260,6 @@
         <li>Treinos personalizados</li>
         <li>Suporte prioritário</li>
       </ul>
-{% if not assinatura_ativa %}
       <form id="formAssinarAnual" action="/iniciar_pagamento" method="POST">
         <input type="hidden" name="plano" value="anual">
         <input type="email" name="email" placeholder="Digite seu e-mail" class="w-full mt-4 p-2 rounded-lg border-gray-300 shadow-sm focus:ring-blue-600 focus:border-blue-600" required>
@@ -259,13 +267,11 @@
           Assinar Agora
         </button>
       </form>
-{% else %}
-  <p class="mt-6 text-green-600 font-bold">✔ Você já é assinante!</p>
-{% endif %}
     </div>
 
   </div>
 </section>
+{% endif %}
 
 <!-- Seção de Depoimentos -->
 <section class="py-16 bg-gray-100 text-center fade-in">
@@ -449,6 +455,32 @@ function mostrarModal(formId) {
     form.submit();
   }
 </script>
+
+<!-- Modal de Login -->
+<div id="loginModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+  <div class="bg-white p-8 rounded-lg shadow-2xl w-full max-w-md">
+    <h3 class="text-2xl font-bold text-green-600">Login</h3>
+    <form method="POST" action="/login">
+      <input type="email" name="email" placeholder="Digite seu e-mail" class="w-full mt-4 p-2 rounded-lg border-gray-300 shadow-sm focus:ring-green-600 focus:border-green-600" required>
+      <button type="submit" class="mt-6 w-full bg-green-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-green-700 transition">
+        Entrar
+      </button>
+    </form>
+    <button onclick="fecharLoginModal()" class="mt-4 w-full bg-gray-300 text-gray-700 font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-gray-400 transition">
+      Fechar
+    </button>
+  </div>
+</div>
+
+<script>
+  function abrirLoginModal() {
+    document.getElementById('loginModal').classList.remove('hidden');
+  }
+  function fecharLoginModal() {
+    document.getElementById('loginModal').classList.add('hidden');
+  }
+</script>
+
 
 
 <!-- NOVO SCRIPT DO MENU AQUI -->
