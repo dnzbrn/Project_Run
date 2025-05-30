@@ -484,10 +484,10 @@ def artigos(slug):
 
         # Mapeia os slugs válidos para seus respectivos arquivos de template
         artigos_disponiveis = {
-            "artigo-alimentacao": "artigos/artigo-alimentacao.html",
-            "artigo-alongamento": "artigos/artigo-alongamento.html",
-            "artigo-melhorar-pace": "artigos/artigo-melhorar-pace.html",
-            "artigo-tenis-corrida": "artigos/artigo-tenis-corrida.html",
+            "alimentacao": "artigos/artigo-alimentacao.html",
+            "alongamento": "artigos/artigo-alongamento.html",
+            "melhorar-pace": "artigos/artigo-melhorar-pace.html",
+            "tenis-corrida": "artigos/artigo-tenis-corrida.html"  # slug corrigido
         }
 
         if slug not in artigos_disponiveis:
@@ -502,6 +502,7 @@ def artigos(slug):
     except Exception as e:
         logging.error(f"Erro ao renderizar artigo {slug}: {e}")
         return render_template_string("<h1>Erro interno ao carregar artigo</h1>"), 500
+
 
 # ================================================
 # ROTAS DE GERAÇÃO DE PLANOS
