@@ -474,6 +474,35 @@ def resultado():
         </html>
         """, 200
 
+@app.route("/artigos/<slug>")
+@limiter.limit("100 per hour")
+def artigos(slug):
+    try:
+        email = session.get("email")
+        plano = session.get("plano", "gratuito")
+        assinatura_ativa = session.get("assinatura_ativa", False)
+
+        # Mapeia os slugs válidos para seus respectivos arquivos de template
+        artigos_disponiveis = {
+            "artigo-alimentacao": "artigos/artigo-alimentacao.html",
+            "artigo-alongamento": "artigos/artigo-alongamento.html",
+            "artigo-melhorar-pace": "artigos/artigo-melhorar-pace.html",
+            "artigo-tenis-corrida": "artigos/artigo-tenis-corrida.html",
+        }
+
+        if slug not in artigos_disponiveis:
+            return render_template_string("<h1>Artigo não encontrado</h1>"), 404
+
+        return render_template(
+            artigos_disponiveis[slug],
+            email=email,
+            plano=plano,
+            assinatura_ativa=assinatura_ativa
+        )
+    except Exception as e:
+        logging.error(f"Erro ao renderizar artigo {slug}: {e}")
+        return render_template_string("<h1>Erro interno ao carregar artigo</h1>"), 500
+
 # ================================================
 # ROTAS DE GERAÇÃO DE PLANOS
 # ================================================
