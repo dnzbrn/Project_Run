@@ -285,15 +285,42 @@ def enviar_email_confirmacao_pagamento(email, nome="Cliente"):
 @limiter.limit("100 per hour")
 def landing():
     try:
-        email = session.get("email")
-        plano = session.get("plano", "gratuito")
-        assinatura_ativa = session.get("assinatura_ativa", False)
+        # Verifica se tem email na sessão ou na URL (?email=)
+        email = session.get("email") or request.args.get("email")
+
+        assinatura_ativa = False
+        plano = "gratuito"
+
+        if email:
+            usuario = db.execute(
+                text("SELECT * FROM usuarios WHERE email = :email"),
+                {"email": email}
+            ).fetchone()
+
+            if usuario:
+                assinatura_ativa = usuario.plano == "anual"
+                plano = usuario.plano
+
+                # Atualiza a sessão
+                session["email"] = usuario.email
+                session["plano"] = plano
+                session["assinatura_ativa"] = assinatura_ativa
+            else:
+                # Se o email não existe no banco, garante que sessão fique como gratuito
+                session["email"] = email
+                session["plano"] = "gratuito"
+                session["assinatura_ativa"] = False
+        else:
+            # Se não tem email, limpa dados de sessão relacionados
+            session["assinatura_ativa"] = False
+            session["plano"] = "gratuito"
+            session.pop("email", None)
 
         return render_template(
             "landing.html",
-            email=email,
-            plano=plano,
-            assinatura_ativa=assinatura_ativa
+            email=session.get("email"),
+            plano=session.get("plano", "gratuito"),
+            assinatura_ativa=session.get("assinatura_ativa", False)
         )
 
     except Exception as e:
