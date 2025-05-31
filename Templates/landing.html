@@ -88,7 +88,7 @@
 
 <!-- Modal Calendário de Corridas -->
 <div id="calendarioModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
-  <div class="bg-white p-6 rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+  <div class="bg-white p-6 rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden">
     <div class="flex justify-between items-center mb-4">
       <h3 class="text-2xl font-bold text-green-600">Calendário de Corridas</h3>
       <button onclick="fecharCalendario()" class="text-gray-500 hover:text-gray-700">
@@ -97,13 +97,13 @@
         </svg>
       </button>
     </div>
-    <div id="eventosContainer" class="grid grid-cols-1 md:grid-cols-2 gap-6">
-      <div class="flex justify-center py-8">
-        <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-green-600"></div>
-      </div>
-    </div>
+    <iframe
+      src="https://docs.google.com/spreadsheets/d/e/2PACX-1vT0D_0-jPKozi4rAtDbWL0PcLJIYYtio6B1Z3phIxTKWGcvr9G60EP_AwhzvYLYvyPhdogFOAEXQ80R/pubhtml?widget=true&headers=false"
+      class="w-full h-[70vh] border-0 rounded-lg">
+    </iframe>
   </div>
 </div>
+
 
 <!-- Top Navigation -->
 <div class="w-full bg-white shadow-md py-4 px-6 flex justify-between items-center">
