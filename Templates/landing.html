@@ -43,6 +43,28 @@
     .border-red-500 {
       border-color: #ef4444;
     }
+
+/* Transição suave para o modal */
+#calendarioModal {
+  transition: opacity 0.3s ease;
+  opacity: 0;
+  pointer-events: none;
+}
+
+#calendarioModal:not(.hidden) {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Estilo para os cards de evento */
+#eventosContainer div {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+#eventosContainer div:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+}
   </style>
 
   <!-- Google tag (gtag.js) - Google Analytics -->
@@ -99,7 +121,10 @@
     </div>
     <!-- Container dos eventos -->
     <div id="eventosContainer" class="grid grid-cols-1 sm:grid-cols-2 gap-6">
-      <!-- Os eventos serão inseridos aqui dinamicamente -->
+      <!-- Os eventos serão carregados dinamicamente aqui -->
+      <div class="text-center py-8">
+        <p class="text-gray-500">Carregando eventos...</p>
+      </div>
     </div>
   </div>
 </div>
@@ -526,45 +551,86 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 
 
-<script>
-  async function carregarEventos() {
-    const url = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSm-wxkmbSGD_NZX477cb5p1K8vT536qJYSEn9cHA8EAPd6BLQybPkyo-6lg78i3Zr3QUTSq4foFfX3/gviz/tq?tqx=out:json&sheet=Sheet1';
+// Função para carregar eventos da planilha do Google
+async function carregarEventos() {
+  const url = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSm-wxkmbSGD_NZX477cb5p1K8vT536qJYSEn9cHA8EAPd6BLQybPkyo-6lg78i3Zr3QUTSq4foFfX3/gviz/tq?tqx=out:json&sheet=Sheet1';
+  
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('Erro na rede');
+    
+    const text = await response.text();
+    const json = JSON.parse(text.substring(47).slice(0, -2));
+    const rows = json.table.rows;
 
-    try {
-      const response = await fetch(url);
-      const text = await response.text();
-      const json = JSON.parse(text.substring(47).slice(0, -2));
-      const rows = json.table.rows;
+    const container = document.getElementById('eventosContainer');
+    container.innerHTML = '';
 
-      const container = document.getElementById('eventosContainer');
-      container.innerHTML = '';
-
-      rows.forEach(row => {
-        const [nome, data, local] = row.c.map(cell => cell ? cell.v : '');
-        const card = document.createElement('div');
-        card.className = 'bg-gray-100 p-5 rounded-lg shadow card-hover';
-        card.innerHTML = `
-          <h4 class="text-xl font-bold text-green-700">${nome}</h4>
-          <p class="text-gray-600 mt-2">📅 <strong>${data}</strong></p>
-          <p class="text-gray-600">📍 ${local}</p>
-        `;
-        container.appendChild(card);
-      });
-    } catch (error) {
-      console.error('Erro ao carregar os eventos:', error);
+    if (rows.length === 0) {
+      container.innerHTML = '<div class="text-center py-8 col-span-2"><p class="text-gray-500">Nenhum evento encontrado</p></div>';
+      return;
     }
-  }
 
-  function abrirCalendario() {
-    document.getElementById('calendarioModal').classList.remove('hidden');
+    rows.forEach(row => {
+      const [nome, data, local, link] = row.c.map(cell => cell ? cell.v : '');
+      const card = document.createElement('div');
+      card.className = 'bg-white p-5 rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300';
+      card.innerHTML = `
+        <h4 class="text-xl font-bold text-green-700 mb-2">${nome || 'Evento sem nome'}</h4>
+        <p class="text-gray-600 mb-1"><strong>📅 Data:</strong> ${data || 'Não especificada'}</p>
+        <p class="text-gray-600 mb-3"><strong>📍 Local:</strong> ${local || 'Não especificado'}</p>
+        ${link ? `<a href="${link}" target="_blank" class="text-blue-600 hover:text-blue-800 font-medium">Mais informações</a>` : ''}
+      `;
+      container.appendChild(card);
+    });
+
+  } catch (error) {
+    console.error('Erro ao carregar eventos:', error);
+    const container = document.getElementById('eventosContainer');
+    container.innerHTML = `
+      <div class="text-center py-8 col-span-2">
+        <p class="text-red-500">Erro ao carregar eventos. Por favor, tente novamente mais tarde.</p>
+        <button onclick="carregarEventos()" class="mt-4 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">
+          Tentar novamente
+        </button>
+      </div>
+    `;
+  }
+}
+
+// Funções para abrir e fechar o modal
+function abrirCalendario() {
+  const modal = document.getElementById('calendarioModal');
+  if (modal) {
+    modal.classList.remove('hidden');
+    document.body.style.overflow = 'hidden'; // Impede scroll da página
     carregarEventos();
+  } else {
+    console.error('Elemento do modal não encontrado');
   }
+}
 
-  function fecharCalendario() {
-    document.getElementById('calendarioModal').classList.add('hidden');
+function fecharCalendario() {
+  const modal = document.getElementById('calendarioModal');
+  if (modal) {
+    modal.classList.add('hidden');
+    document.body.style.overflow = ''; // Restaura scroll da página
   }
-</script>
+}
 
+// Fechar modal ao pressionar ESC
+document.addEventListener('keydown', function(event) {
+  if (event.key === 'Escape') {
+    fecharCalendario();
+  }
+});
+
+// Fechar modal ao clicar fora do conteúdo
+document.getElementById('calendarioModal').addEventListener('click', function(e) {
+  if (e.target === this) {
+    fecharCalendario();
+  }
+});
 
 
 
