@@ -88,7 +88,7 @@
 
 <!-- Modal Calendário de Corridas -->
 <div id="calendarioModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
-  <div class="bg-white p-6 rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden">
+  <div class="bg-white p-6 rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
     <div class="flex justify-between items-center mb-4">
       <h3 class="text-2xl font-bold text-green-600">Calendário de Corridas</h3>
       <button onclick="fecharCalendario()" class="text-gray-500 hover:text-gray-700">
@@ -97,10 +97,10 @@
         </svg>
       </button>
     </div>
-    <iframe
-      src="https://docs.google.com/spreadsheets/d/e/2PACX-1vT0D_0-jPKozi4rAtDbWL0PcLJIYYtio6B1Z3phIxTKWGcvr9G60EP_AwhzvYLYvyPhdogFOAEXQ80R/pubhtml?widget=true&headers=false"
-      class="w-full h-[70vh] border-0 rounded-lg">
-    </iframe>
+    <!-- Container dos eventos -->
+    <div id="eventosContainer" class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+      <!-- Os eventos serão inseridos aqui dinamicamente -->
+    </div>
   </div>
 </div>
 
@@ -532,6 +532,51 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('calendarioModal').classList.add('hidden');
   }
 </script>
+
+<script>
+  async function carregarEventos() {
+    const spreadsheetId = '1ND_A67c8IYMojUXO4S6dqjgSQlP7wI74d69iKcGxbKE';
+    const sheetName = 'Sheet1'; // Ou altere conforme o nome da aba na planilha
+    const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:json&sheet=${sheetName}`;
+
+    try {
+      const response = await fetch(url);
+      const text = await response.text();
+      const json = JSON.parse(text.substring(47).slice(0, -2));
+      const rows = json.table.rows;
+
+      const container = document.getElementById('eventosContainer');
+      container.innerHTML = ''; // Limpa conteúdo anterior
+
+      rows.forEach(row => {
+        if (!row.c) return;
+        const [nome, data, local] = row.c.map(cell => cell ? cell.v : '');
+        if (!nome || !data || !local) return;
+
+        const card = document.createElement('div');
+        card.className = 'bg-gray-100 p-5 rounded-lg shadow card-hover';
+        card.innerHTML = `
+          <h4 class="text-xl font-bold text-green-700">${nome}</h4>
+          <p class="text-gray-600 mt-2">📅 <strong>${data}</strong></p>
+          <p class="text-gray-600">📍 ${local}</p>
+        `;
+        container.appendChild(card);
+      });
+    } catch (error) {
+      console.error('Erro ao carregar os eventos:', error);
+    }
+  }
+
+  function abrirCalendario() {
+    document.getElementById('calendarioModal').classList.remove('hidden');
+    carregarEventos();
+  }
+
+  function fecharCalendario() {
+    document.getElementById('calendarioModal').classList.add('hidden');
+  }
+</script>
+
 
 </body>
 </html>
