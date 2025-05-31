@@ -105,6 +105,7 @@
 </div>
 
 
+
 <!-- Top Navigation -->
 <div class="w-full bg-white shadow-md py-4 px-6 flex justify-between items-center">
   <a href="/" class="text-2xl font-bold text-green-600">TreinoRun</a>
@@ -535,9 +536,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <script>
   async function carregarEventos() {
-    const spreadsheetId = '1ND_A67c8IYMojUXO4S6dqjgSQlP7wI74d69iKcGxbKE';
-    const sheetName = 'Sheet1'; // Ou altere conforme o nome da aba na planilha
-    const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:json&sheet=${sheetName}`;
+    const url = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSm-wxkmbSGD_NZX477cb5p1K8vT536qJYSEn9cHA8EAPd6BLQybPkyo-6lg78i3Zr3QUTSq4foFfX3/gviz/tq?tqx=out:json&sheet=Sheet1';
 
     try {
       const response = await fetch(url);
@@ -546,13 +545,10 @@ document.addEventListener('DOMContentLoaded', function() {
       const rows = json.table.rows;
 
       const container = document.getElementById('eventosContainer');
-      container.innerHTML = ''; // Limpa conteúdo anterior
+      container.innerHTML = '';
 
       rows.forEach(row => {
-        if (!row.c) return;
         const [nome, data, local] = row.c.map(cell => cell ? cell.v : '');
-        if (!nome || !data || !local) return;
-
         const card = document.createElement('div');
         card.className = 'bg-gray-100 p-5 rounded-lg shadow card-hover';
         card.innerHTML = `
@@ -576,6 +572,8 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('calendarioModal').classList.add('hidden');
   }
 </script>
+
+
 
 
 </body>
