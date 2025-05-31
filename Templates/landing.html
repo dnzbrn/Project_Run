@@ -551,8 +551,10 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 
 
+<script>
 // Função para carregar eventos da planilha do Google
 async function carregarEventos() {
+  console.log('Iniciando carregamento de eventos...');
   const url = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSm-wxkmbSGD_NZX477cb5p1K8vT536qJYSEn9cHA8EAPd6BLQybPkyo-6lg78i3Zr3QUTSq4foFfX3/gviz/tq?tqx=out:json&sheet=Sheet1';
   
   try {
@@ -560,7 +562,7 @@ async function carregarEventos() {
     if (!response.ok) throw new Error('Erro na rede');
     
     const text = await response.text();
-    const json = JSON.parse(text.substring(47).slice(0, -2));
+    const json = JSON.parse(text.substring(47).slice(0, -2)); // Corrigido aqui
     const rows = json.table.rows;
 
     const container = document.getElementById('eventosContainer');
@@ -600,37 +602,41 @@ async function carregarEventos() {
 
 // Funções para abrir e fechar o modal
 function abrirCalendario() {
+  console.log('Abrindo calendário...');
   const modal = document.getElementById('calendarioModal');
   if (modal) {
     modal.classList.remove('hidden');
-    document.body.style.overflow = 'hidden'; // Impede scroll da página
+    document.body.style.overflow = 'hidden';
     carregarEventos();
-  } else {
-    console.error('Elemento do modal não encontrado');
   }
 }
 
 function fecharCalendario() {
+  console.log('Fechando calendário...');
   const modal = document.getElementById('calendarioModal');
   if (modal) {
     modal.classList.add('hidden');
-    document.body.style.overflow = ''; // Restaura scroll da página
+    document.body.style.overflow = '';
   }
 }
 
-// Fechar modal ao pressionar ESC
-document.addEventListener('keydown', function(event) {
-  if (event.key === 'Escape') {
-    fecharCalendario();
-  }
-});
+// Event listeners
+document.addEventListener('DOMContentLoaded', function() {
+  // Fechar modal ao pressionar ESC
+  document.addEventListener('keydown', function(event) {
+    if (event.key === 'Escape') {
+      fecharCalendario();
+    }
+  });
 
-// Fechar modal ao clicar fora do conteúdo
-document.getElementById('calendarioModal').addEventListener('click', function(e) {
-  if (e.target === this) {
-    fecharCalendario();
-  }
+  // Fechar modal ao clicar fora do conteúdo
+  document.getElementById('calendarioModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+      fecharCalendario();
+    }
+  });
 });
+</script>
 
 
 
