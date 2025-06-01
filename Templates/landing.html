@@ -552,23 +552,26 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <script>
   function formatarData(dataString) {
-    const [dia, mes, ano] = dataString.split('/');
-    const data = new Date(`${ano}-${mes}-${dia}T00:00:00`);
-    if (isNaN(data)) return 'Data inválida';
-    return data.toLocaleDateString('pt-BR', {
-      day: '2-digit',
-      month: 'long',
-      year: 'numeric'
-    });
+    const partes = dataString.split('/');
+    if (partes.length === 3) {
+      // Converte "dd/mm/yyyy" para "yyyy-mm-dd"
+      const [dia, mes, ano] = partes;
+      return new Date(`${ano}-${mes}-${dia}`).toLocaleDateString('pt-BR', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric'
+      });
+    }
+    return dataString;
   }
 
   function ehDataFutura(dataString) {
-    const [dia, mes, ano] = dataString.split('/');
-    const data = new Date(`${ano}-${mes}-${dia}T00:00:00`);
-    if (isNaN(data)) return false;
+    const partes = dataString.split('/');
+    if (partes.length !== 3) return false;
+    const [dia, mes, ano] = partes;
+    const data = new Date(`${ano}-${mes}-${dia}`);
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
-    data.setHours(0, 0, 0, 0);
     return data >= hoje;
   }
 
@@ -588,31 +591,39 @@ document.addEventListener('DOMContentLoaded', function() {
       const csvText = await response.text();
       const linhas = csvText.trim().split('\n').slice(1); // Remove cabeçalho
 
-      const eventos = linhas.map(row => {
-        const colunas = row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/); // Lida com vírgulas dentro de aspas
+      const eventos = linhas
+        .map(row => {
+          const colunas = row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
 
-        if (colunas.length < 6) return null;
+          if (colunas.length < 6) return null;
 
-        const nome = colunas[0]?.trim();
-        const data = colunas[1]?.trim();
-        const horario = colunas[2]?.trim();
-        const distancia = colunas[3]?.trim();
-        const local = colunas[4]?.trim();
-        const link = colunas[5]?.replace(/["\r\n]/g, '').trim(); // Mantém o link da planilha
+          const nome = colunas[0]?.replace(/^"|"$/g, '').trim();
+          const data = colunas[1]?.replace(/^"|"$/g, '').trim();
+          const horario = colunas[2]?.replace(/^"|"$/g, '').trim();
+          const distancia = colunas[3]?.replace(/^"|"$/g, '').trim();
+          const local = colunas[4]?.replace(/^"|"$/g, '').trim();
+          const link = colunas[5]?.replace(/^"|"$/g, '').trim();
 
-        if (!ehDataFutura(data)) return null;
+          if (!ehDataFutura(data)) return null;
 
-        return `
+          return { nome, data, horario, distancia, local, link };
+        })
+        .filter(Boolean)
+        .sort((a, b) => {
+          const [diaA, mesA, anoA] = a.data.split('/');
+          const [diaB, mesB, anoB] = b.data.split('/');
+          return new Date(`${anoA}-${mesA}-${diaA}`) - new Date(`${anoB}-${mesB}-${diaB}`);
+        })
+        .map(evento => `
           <div class="bg-white p-5 rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300">
-            <h4 class="text-xl font-bold text-green-700 mb-2">${nome}</h4>
-            <p class="text-gray-600"><strong>📅 Data:</strong> ${formatarData(data)}</p>
-            <p class="text-gray-600"><strong>⏰ Horário:</strong> ${horario}</p>
-            <p class="text-gray-600"><strong>📏 Distância:</strong> ${distancia}</p>
-            <p class="text-gray-600"><strong>📍 Local:</strong> ${local}</p>
-            ${link ? `<a href="${link}" target="_blank" class="text-blue-600 hover:text-blue-800 font-medium">Mais informações</a>` : ''}
+            <h4 class="text-xl font-bold text-green-700 mb-2">${evento.nome}</h4>
+            <p class="text-gray-600"><strong>📅 Data:</strong> ${formatarData(evento.data)}</p>
+            <p class="text-gray-600"><strong>⏰ Horário:</strong> ${evento.horario}</p>
+            <p class="text-gray-600"><strong>📏 Distância:</strong> ${evento.distancia}</p>
+            <p class="text-gray-600"><strong>📍 Local:</strong> ${evento.local}</p>
+            ${evento.link ? `<a href="${evento.link}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 font-medium">Mais informações</a>` : ''}
           </div>
-        `;
-      }).filter(Boolean).join('');
+        `).join('');
 
       container.innerHTML = eventos || `
         <div class="text-center py-8">
@@ -644,11 +655,6 @@ document.addEventListener('DOMContentLoaded', function() {
     modal.classList.add('hidden');
   }
 </script>
-
-
-
-
-
 
 
 
