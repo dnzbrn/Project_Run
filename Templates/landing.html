@@ -551,23 +551,25 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 
 <script>
-  function formatarData(dataObj) {
-    return dataObj.toLocaleDateString('pt-BR', {
+  function formatarData(dataString) {
+    const [dia, mes, ano] = dataString.split('/');
+    const data = new Date(`${ano}-${mes}-${dia}T00:00:00`);
+    if (isNaN(data)) return 'Data inválida';
+    return data.toLocaleDateString('pt-BR', {
       day: '2-digit',
       month: 'long',
       year: 'numeric'
     });
   }
 
-  function parseDataBrasileira(dataString) {
+  function ehDataFutura(dataString) {
     const [dia, mes, ano] = dataString.split('/');
-    return new Date(`${ano}-${mes}-${dia}T00:00:00`);
-  }
-
-  function ehDataFutura(dataObj) {
+    const data = new Date(`${ano}-${mes}-${dia}T00:00:00`);
+    if (isNaN(data)) return false;
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
-    return dataObj >= hoje;
+    data.setHours(0, 0, 0, 0);
+    return data >= hoje;
   }
 
   async function carregarEventos() {
@@ -584,27 +586,29 @@ document.addEventListener('DOMContentLoaded', function() {
     try {
       const response = await fetch(csvUrl);
       const csvText = await response.text();
-      const linhas = csvText.trim().split('\n').slice(1);
+      const linhas = csvText.trim().split('\n').slice(1); // Remove cabeçalho
 
       const eventos = linhas.map(row => {
-        const colunas = row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+        const colunas = row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/); // Regex para lidar com vírgulas em colunas com aspas
 
         if (colunas.length < 6) return null;
 
         const nome = colunas[0]?.trim();
-        const dataStr = colunas[1]?.trim();
+        const data = colunas[1]?.trim();
         const horario = colunas[2]?.trim();
-        const distancia = colunas[3]?.trim().replace(/^"|"$/g, '');
-        const local = colunas[4]?.trim().replace(/^"|"$/g, '');
-        const link = colunas.slice(5).join(',').replace(/["\r\n]/g, '').trim();
+        const distancia = colunas[3]?.trim();
+        const local = colunas[4]?.trim();
 
-        const dataObj = parseDataBrasileira(dataStr);
-        if (!ehDataFutura(dataObj)) return null;
+        // Corrigindo o link para pegar somente a URL
+        const linkBruto = colunas.slice(5).join(',').trim();
+        const link = linkBruto.match(/https?:\/\/[^\s"]+/)?.[0] || '';
+
+        if (!ehDataFutura(data)) return null;
 
         return `
           <div class="bg-white p-5 rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300">
             <h4 class="text-xl font-bold text-green-700 mb-2">${nome}</h4>
-            <p class="text-gray-600"><strong>📅 Data:</strong> ${formatarData(dataObj)}</p>
+            <p class="text-gray-600"><strong>📅 Data:</strong> ${formatarData(data)}</p>
             <p class="text-gray-600"><strong>⏰ Horário:</strong> ${horario}</p>
             <p class="text-gray-600"><strong>📏 Distância:</strong> ${distancia}</p>
             <p class="text-gray-600"><strong>📍 Local:</strong> ${local}</p>
@@ -631,6 +635,19 @@ document.addEventListener('DOMContentLoaded', function() {
       `;
     }
   }
+
+  function abrirCalendario() {
+    const modal = document.getElementById('calendarioModal');
+    modal.classList.remove('hidden');
+    carregarEventos();
+  }
+
+  function fecharCalendario() {
+    const modal = document.getElementById('calendarioModal');
+    modal.classList.add('hidden');
+  }
+</script>
+
 
   function abrirCalendario() {
     const modal = document.getElementById('calendarioModal');
