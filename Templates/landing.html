@@ -641,6 +641,23 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 </script>
 
+<script>
+  function abrirCalendario() {
+    const modal = document.getElementById('calendarioModal');
+    if (modal) {
+      modal.classList.remove('hidden');
+      carregarEventos();
+    } else {
+      console.warn("Modal não encontrado!");
+    }
+  }
+
+  function fecharCalendario() {
+    const modal = document.getElementById('calendarioModal');
+    if (modal) modal.classList.add('hidden');
+  }
+</script>
+
 
 
 
