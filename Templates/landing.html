@@ -121,7 +121,7 @@
     </div>
     <!-- Container dos eventos -->
     <div id="eventosContainer" class="grid grid-cols-1 sm:grid-cols-2 gap-6">
-      <!-- Os eventos serão carregados dinamicamente aqui -->
+      <!-- Eventos serão carregados dinamicamente -->
       <div class="text-center py-8">
         <p class="text-gray-500">Carregando eventos...</p>
       </div>
@@ -550,16 +550,23 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 
+
 <script>
-  function abrirCalendario() {
-    const modal = document.getElementById('calendarioModal');
-    modal.classList.remove('hidden');
-    carregarEventos();
+  function formatarData(dataString) {
+    if (!dataString) return 'Data não informada';
+    const data = new Date(dataString);
+    return data.toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric'
+    });
   }
 
-  function fecharCalendario() {
-    const modal = document.getElementById('calendarioModal');
-    modal.classList.add('hidden');
+  function ehDataFutura(dataString) {
+    if (!dataString) return false;
+    const hoje = new Date();
+    const dataEvento = new Date(dataString);
+    return dataEvento >= hoje;
   }
 
   async function carregarEventos() {
@@ -571,42 +578,43 @@ document.addEventListener('DOMContentLoaded', function() {
       </div>
     `;
 
-    const sheetId = '1Sm-wxkmbSGD_NZX477cb5p1K8vT536qJYSEn9cHA8EAPd6BLQybPkyo-6lg78i3Zr3QUTSq4foFfX3';
-    const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json`;
+    const csvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vT0D_0-jPKozi4rAtDbWL0PcLJIYYtio6B1Z3phIxTKWGcvr9G60EP_AwhzvYLYvyPhdogFOAEXQ80R/pub?output=csv';
 
     try {
-      let response = await fetch(url);
-      if (!response.ok) {
-        response = await fetch(`https://cors-anywhere.herokuapp.com/${url}`);
-      }
+      const response = await fetch(csvUrl);
+      const csvText = await response.text();
+      const rows = csvText.split('\n').slice(1); // Pula o cabeçalho
 
-      if (!response.ok) throw new Error('Falha ao carregar dados');
+      const eventos = rows
+        .map(row => {
+          const colunas = row.split(',');
+          const nome = colunas[0];
+          const data = colunas[1];
+          const local = colunas[2];
+          const link = colunas.slice(3).join(',').replace(/\r/g, '').trim();
 
-      const text = await response.text();
-      const json = JSON.parse(text.replace(/^.*?({.*}).*$/, '$1'));
+          if (!ehDataFutura(data)) return null;
 
-      if (!json.table || !json.table.rows) {
-        throw new Error('Estrutura de dados inesperada');
-      }
+          return `
+            <div class="bg-white p-5 rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300">
+              <h4 class="text-xl font-bold text-green-700 mb-2">${nome || 'Evento sem nome'}</h4>
+              <p class="text-gray-600 mb-1"><strong>📅 Data:</strong> ${formatarData(data)}</p>
+              <p class="text-gray-600 mb-3"><strong>📍 Local:</strong> ${local || 'Local não informado'}</p>
+              ${link ? `<a href="${link}" target="_blank" class="text-blue-600 hover:text-blue-800 font-medium">Mais informações</a>` : ''}
+            </div>
+          `;
+        })
+        .filter(Boolean) // Remove os nulls
+        .join('');
 
-      container.innerHTML = json.table.rows.map(row => {
-        const nome = row.c[0]?.v || 'Evento sem nome';
-        const data = row.c[1]?.v || 'Data não informada';
-        const local = row.c[2]?.v || 'Local não informado';
-        const link = row.c[3]?.v;
-
-        return `
-          <div class="bg-white p-5 rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300">
-            <h4 class="text-xl font-bold text-green-700 mb-2">${nome}</h4>
-            <p class="text-gray-600 mb-1"><strong>📅 Data:</strong> ${data}</p>
-            <p class="text-gray-600 mb-3"><strong>📍 Local:</strong> ${local}</p>
-            ${link ? `<a href="${link}" target="_blank" class="text-blue-600 hover:text-blue-800 font-medium">Mais informações</a>` : ''}
-          </div>
-        `;
-      }).join('');
+      container.innerHTML = eventos || `
+        <div class="text-center py-8">
+          <p class="text-gray-500">Nenhum evento futuro encontrado.</p>
+        </div>
+      `;
 
     } catch (error) {
-      console.error('Erro detalhado:', error);
+      console.error('Erro ao carregar eventos:', error);
       container.innerHTML = `
         <div class="text-center py-8">
           <p class="text-red-500">Erro ao carregar eventos: ${error.message}</p>
@@ -614,12 +622,14 @@ document.addEventListener('DOMContentLoaded', function() {
                   class="mt-4 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition">
             Tentar novamente
           </button>
-          <p class="mt-2 text-sm text-gray-500">Se o problema persistir, entre em contato com o suporte</p>
+          <p class="mt-2 text-sm text-gray-500">Se o problema persistir, entre em contato com o suporte.</p>
         </div>
       `;
     }
   }
 </script>
+
+
 
 
 
