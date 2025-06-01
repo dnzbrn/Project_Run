@@ -589,7 +589,7 @@ document.addEventListener('DOMContentLoaded', function() {
       const linhas = csvText.trim().split('\n').slice(1); // Remove cabeçalho
 
       const eventos = linhas.map(row => {
-        const colunas = row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/); // Regex para lidar com vírgulas em colunas com aspas
+        const colunas = row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/); // Lida com vírgulas dentro de aspas
 
         if (colunas.length < 6) return null;
 
@@ -598,10 +598,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const horario = colunas[2]?.trim();
         const distancia = colunas[3]?.trim();
         const local = colunas[4]?.trim();
-
-        // Corrigindo o link para pegar somente a URL
-        const linkBruto = colunas.slice(5).join(',').trim();
-        const link = linkBruto.match(/https?:\/\/[^\s"]+/)?.[0] || '';
+        const link = colunas[5]?.replace(/["\r\n]/g, '').trim(); // Mantém o link da planilha
 
         if (!ehDataFutura(data)) return null;
 
@@ -649,17 +646,7 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 
 
-  function abrirCalendario() {
-    const modal = document.getElementById('calendarioModal');
-    modal.classList.remove('hidden');
-    carregarEventos();
-  }
 
-  function fecharCalendario() {
-    const modal = document.getElementById('calendarioModal');
-    modal.classList.add('hidden');
-  }
-</script>
 
 
 
