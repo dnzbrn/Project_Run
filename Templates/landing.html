@@ -577,6 +577,26 @@ document.addEventListener('DOMContentLoaded', function() {
     return false;
   }
 
+<script>
+  function formatarData(dataString) {
+    const data = new Date(dataString);
+    if (isNaN(data)) return 'Data inválida';
+    return data.toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric'
+    });
+  }
+
+  function ehDataFutura(dataString) {
+    const data = new Date(dataString);
+    if (isNaN(data)) return false;
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    data.setHours(0, 0, 0, 0);
+    return data >= hoje;
+  }
+
   async function carregarEventos() {
     const container = document.getElementById('eventosContainer');
     container.innerHTML = `
@@ -591,17 +611,19 @@ document.addEventListener('DOMContentLoaded', function() {
     try {
       const response = await fetch(csvUrl);
       const csvText = await response.text();
-      const rows = csvText.split('\n').slice(1); // Remove cabeçalho
+      const rows = csvText.split('\n').slice(1); // Pula o cabeçalho
 
       const eventos = rows
         .map(row => {
           const colunas = row.split(',');
+          if (colunas.length < 6) return null;
+
           const nome = colunas[0]?.trim();
           const data = colunas[1]?.trim();
           const horario = colunas[2]?.trim();
           const distancia = colunas[3]?.trim();
           const local = colunas[4]?.trim();
-          const link = colunas.slice(5).join(',').replace(/\r/g, '').trim(); // trata link com vírgula
+          const link = colunas.slice(5).join(',').replace(/\r|\n/g, '').trim();
 
           if (!ehDataFutura(data)) return null;
 
@@ -624,7 +646,6 @@ document.addEventListener('DOMContentLoaded', function() {
           <p class="text-gray-500">Nenhum evento futuro encontrado.</p>
         </div>
       `;
-
     } catch (error) {
       console.error('Erro ao carregar eventos:', error);
       container.innerHTML = `
@@ -634,12 +655,24 @@ document.addEventListener('DOMContentLoaded', function() {
                   class="mt-4 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition">
             Tentar novamente
           </button>
-          <p class="mt-2 text-sm text-gray-500">Se o problema persistir, entre em contato com o suporte.</p>
         </div>
       `;
     }
   }
+
+  // ⚠️ CHAME a função ao abrir o modal:
+  function abrirCalendario() {
+    const modal = document.getElementById('calendarioModal');
+    modal.classList.remove('hidden');
+    carregarEventos(); // <- aqui
+  }
+
+  function fecharCalendario() {
+    const modal = document.getElementById('calendarioModal');
+    modal.classList.add('hidden');
+  }
 </script>
+
 
 <script>
   function abrirCalendario() {
