@@ -43,28 +43,22 @@
     .border-red-500 {
       border-color: #ef4444;
     }
-
-/* Transição suave para o modal */
-#calendarioModal {
-  transition: opacity 0.3s ease;
-  opacity: 0;
-  pointer-events: none;
-}
-
-#calendarioModal:not(.hidden) {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-/* Estilo para os cards de evento */
-#eventosContainer div {
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
-}
-
-#eventosContainer div:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
-}
+    #calendarioModal {
+      transition: opacity 0.3s ease;
+      opacity: 0;
+      pointer-events: none;
+    }
+    #calendarioModal:not(.hidden) {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    #eventosContainer div {
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    #eventosContainer div:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+    }
   </style>
 
   <!-- Google tag (gtag.js) - Google Analytics -->
@@ -78,10 +72,10 @@
 </head>
 <body class="bg-gray-50 text-gray-900">
 
-
 <script>
   const ASSINATURA_ATIVA = {{ 'true' if assinatura_ativa else 'false' }};
   const EMAIL_USUARIO = "{{ email if email else '' }}";
+  const DIAS_DESDE_ULTIMA = {{ dias_desde_ultima if dias_desde_ultima is defined else 0 }};
 </script>
 
 <!-- Menu Lateral -->
@@ -119,9 +113,7 @@
         </svg>
       </button>
     </div>
-    <!-- Container dos eventos -->
     <div id="eventosContainer" class="grid grid-cols-1 sm:grid-cols-2 gap-6">
-      <!-- Eventos serão carregados dinamicamente -->
       <div class="text-center py-8">
         <p class="text-gray-500">Carregando eventos...</p>
       </div>
@@ -129,19 +121,15 @@
   </div>
 </div>
 
-
-
 <!-- Top Navigation -->
 <div class="w-full bg-white shadow-md py-4 px-6 flex justify-between items-center relative z-40">
   <div class="flex items-center gap-4">
-    <!-- Botão do menu -->
-    <button id="menuButton" class="p-2 rounded-lg bg-white shadow-lg focus:outline-none">
+    <button id="menuButtonMobile" class="p-2 rounded-lg bg-white shadow-lg focus:outline-none">
       <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-800" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
       </svg>
     </button>
     
-    <!-- Logo -->
     <a href="/" class="text-2xl font-bold text-green-600">TreinoRun</a>
   </div>
 
@@ -161,10 +149,7 @@
   </div>
 </div>
 
-
-
 <!-- Seção Hero -->
-
 <header class="bg-gradient-to-r from-green-500 to-blue-500 text-white py-16 text-center fade-in">
   <h1 class="text-5xl font-bold">Supere seus limites na corrida!</h1>
   <p class="mt-4 text-lg">Planos de treino personalizados para você correr mais rápido e com segurança.</p>
@@ -177,7 +162,6 @@
     Teste Agora
   </a>
 </header>
-
 
 <!-- Seção de Formulários -->
 <section id="formularios" class="py-16 bg-gray-100 text-center fade-in">
@@ -219,6 +203,17 @@
           <label class="block text-lg font-medium mt-4">Tempo diário (minutos):</label>
           <input type="number" name="tempo" placeholder="Ex.: 30" class="w-full mt-2 rounded-lg border-gray-300 shadow-sm focus:ring-green-600 focus:border-green-600" required>
           <button type="button" onclick="mostrarModal('formCorrida')" class="mt-6 w-full bg-green-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-green-700 transition">Gerar Plano</button>
+          
+          {% if not assinatura_ativa and dias_desde_ultima is defined and dias_desde_ultima < 30 %}
+            <div class="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-center">
+              <p class="text-yellow-800">
+                Você poderá gerar outro treino gratuito em {{ 30 - dias_desde_ultima }} dias
+              </p>
+              <a href="/iniciar_pagamento?email={{ email }}" class="mt-2 inline-block text-blue-600 hover:text-blue-800 font-medium">
+                Ou assine agora para gerar ilimitado
+              </a>
+            </div>
+          {% endif %}
         </div>
       </form>
     </div>
@@ -235,8 +230,6 @@
           <input type="text" name="objetivo" placeholder="Ex.: Reduzir pace de 10 para 5min/km" class="w-full mt-2 rounded-lg border-gray-300 shadow-sm focus:ring-blue-600 focus:border-blue-600" required>
           <button type="button" onclick="nextStep('paceStep', 1, 2)" class="mt-6 w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-blue-700 transition">Próximo</button>
         </div>
-        <!-- Continua na próxima parte -->
-
         <div id="paceStep2" class="step hidden-step">
           <label class="block text-lg font-medium mt-4">Em quanto tempo gostaria de melhorar?</label>
           <input type="text" name="tempo_melhoria" placeholder="Ex.: 2 meses" class="w-full mt-2 rounded-lg border-gray-300 shadow-sm focus:ring-blue-600 focus:border-blue-600" required>
@@ -260,56 +253,75 @@
           <label class="block text-lg font-medium mt-4">Tempo diário (minutos):</label>
           <input type="number" name="tempo" placeholder="Ex.: 30" class="w-full mt-2 rounded-lg border-gray-300 shadow-sm focus:ring-blue-600 focus:border-blue-600" required>
           <button type="button" onclick="mostrarModal('formPace')" class="mt-6 w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-blue-700 transition">Gerar Plano</button>
+          
+          {% if not assinatura_ativa and dias_desde_ultima is defined and dias_desde_ultima < 30 %}
+            <div class="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-center">
+              <p class="text-yellow-800">
+                Você poderá gerar outro treino gratuito em {{ 30 - dias_desde_ultima }} dias
+              </p>
+              <a href="/iniciar_pagamento?email={{ email }}" class="mt-2 inline-block text-blue-600 hover:text-blue-800 font-medium">
+                Ou assine agora para gerar ilimitado
+              </a>
+            </div>
+          {% endif %}
         </div>
       </form>
     </div>
-
   </div>
 </section>
 
 <!-- Seção de Planos -->
-{% if not assinatura_ativa %}
 <section class="py-16 bg-white text-center fade-in">
-  <h2 class="text-4xl font-bold text-green-700">Escolha o Plano Ideal para Você</h2>
+  <h2 class="text-4xl font-bold text-green-700">Seu Plano Atual</h2>
   <div class="mt-10 flex flex-wrap justify-center gap-8">
+    
+    {% if assinatura_ativa %}
+      <!-- Card para assinantes -->
+      <div class="bg-green-50 p-6 rounded-lg shadow-md w-full max-w-sm border-2 border-green-600">
+        <h3 class="text-2xl font-bold text-green-600">Plano Anual Ativo</h3>
+        <p class="mt-4 text-gray-700">Gerações ilimitadas</p>
+        <div class="mt-6">
+          <a href="#formularios" class="bg-green-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-green-700 transition">
+            Criar Novo Treino
+          </a>
+        </div>
+      </div>
+    {% else %}
+      <!-- Cards para não assinantes -->
+      <div class="bg-gray-100 p-6 rounded-lg shadow-md w-full max-w-sm card-hover">
+        <h3 class="text-2xl font-bold text-green-600">Plano Básico</h3>
+        <p class="mt-4 text-gray-700">
+          {% if dias_desde_ultima is defined and dias_desde_ultima < 30 %}
+            Próximo treino disponível em: {{ 30 - dias_desde_ultima }} dias
+          {% else %}
+            Treino gratuito disponível agora!
+          {% endif %}
+        </p>
+        <div class="mt-6">
+          <a href="#formularios" class="bg-green-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-green-700 transition">
+            {% if dias_desde_ultima is defined and dias_desce_ultima < 30 %}
+              Ver Upgrade
+            {% else %}
+              Criar Treino Gratuito
+            {% endif %}
+          </a>
+        </div>
+      </div>
 
-    <!-- Plano Básico -->
-    <div class="bg-gray-100 p-6 rounded-lg shadow-md w-full max-w-sm card-hover">
-      <h3 class="text-2xl font-bold text-green-600">Plano Básico (Grátis)</h3>
-      <p class="mt-4 text-gray-700">Acesso limitado a 1 treino/mês</p>
-      <p class="mt-4 text-4xl font-bold text-green-600">R$ 0,00</p>
-      <ul class="mt-4 text-left text-gray-700 list-disc list-inside">
-        <li>1 plano mensal</li>
-        <li>Suporte por e-mail</li>
-      </ul>
-      <button class="mt-6 w-full bg-green-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-green-700 transition" onclick="selecionarPlano('gratuito')">
-        Comece Agora
-      </button>
-    </div>
-
-    <!-- Plano Completo -->
-    <div class="bg-gray-100 p-6 rounded-lg shadow-md w-full max-w-sm card-hover relative">
-      <span class="absolute top-0 right-0 bg-blue-600 text-white px-4 py-1 rounded-bl-lg">Mais Popular</span>
-      <h3 class="text-2xl font-bold text-blue-600">Plano Completo</h3>
-      <p class="mt-4 text-gray-700">Acesso ilimitado por menos de R$ 6/mês</p>
-      <p class="mt-4 text-4xl font-bold text-blue-600">R$ 59,90/ano</p>
-      <ul class="mt-4 text-left text-gray-700 list-disc list-inside">
-        <li>Planos ilimitados</li>
-        <li>Treinos personalizados</li>
-        <li>Suporte prioritário</li>
-      </ul>
-      <form id="formAssinarAnual" action="/iniciar_pagamento" method="POST">
-        <input type="hidden" name="plano" value="anual">
-        <input type="email" name="email" placeholder="Digite seu e-mail" class="w-full mt-4 p-2 rounded-lg border-gray-300 shadow-sm focus:ring-blue-600 focus:border-blue-600" required>
-        <button type="submit" class="mt-6 w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-blue-700 transition">
-          Assinar Agora
-        </button>
-      </form>
-    </div>
-
+      <div class="bg-gray-100 p-6 rounded-lg shadow-md w-full max-w-sm card-hover relative">
+        <span class="absolute top-0 right-0 bg-blue-600 text-white px-4 py-1 rounded-bl-lg">Recomendado</span>
+        <h3 class="text-2xl font-bold text-blue-600">Plano Completo</h3>
+        <p class="mt-4 text-gray-700">Gerações ilimitadas por 1 ano</p>
+        <p class="mt-4 text-4xl font-bold text-blue-600">R$ 59,90/ano</p>
+        <div class="mt-6">
+          <a href="/iniciar_pagamento?email={{ email }}" class="bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-blue-700 transition">
+            Assinar Agora
+          </a>
+        </div>
+      </div>
+    {% endif %}
   </div>
 </section>
-{% endif %}
 
 <!-- Seção de Depoimentos -->
 <section class="py-16 bg-gray-100 text-center fade-in">
@@ -344,7 +356,7 @@
 </footer>
 
 <!-- Modal de Escolha de Planos -->
-<div id="planoModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden" data-form-id="">
+<div id="planoModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50" data-form-id="">
   <div class="bg-white p-8 rounded-lg shadow-2xl w-full max-w-md">
     <h3 class="text-2xl font-bold text-green-600">Escolha seu Plano</h3>
     <div class="mt-6 space-y-4">
@@ -362,7 +374,7 @@
 </div>
 
 <!-- Modal de E-mail -->
-<div id="emailModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden">
+<div id="emailModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
   <div class="bg-white p-8 rounded-lg shadow-2xl w-full max-w-md">
     <h3 class="text-2xl font-bold text-green-600">Informe seu e-mail</h3>
     <form id="emailForm" onsubmit="return enviarFormularioComEmail(event)">
@@ -377,9 +389,57 @@
   </div>
 </div>
 
-<!-- Scripts corrigidos -->
+<!-- Modal de Login -->
+<div id="loginModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+  <div class="bg-white p-8 rounded-lg shadow-2xl w-full max-w-md">
+    <h3 class="text-2xl font-bold text-green-600">Login</h3>
+    <form method="POST" action="/login">
+      <input type="email" name="email" placeholder="Digite seu e-mail" class="w-full mt-4 p-2 rounded-lg border-gray-300 shadow-sm focus:ring-green-600 focus:border-green-600" required>
+      <button type="submit" class="mt-6 w-full bg-green-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-green-700 transition">
+        Entrar
+      </button>
+    </form>
+    <button onclick="fecharLoginModal()" class="mt-4 w-full bg-gray-300 text-gray-700 font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-gray-400 transition">
+      Fechar
+    </button>
+  </div>
+</div>
+
+<!-- Scripts -->
 <script>
-  // Avançar etapas dos formulários
+  // Menu Mobile
+  document.addEventListener('DOMContentLoaded', function() {
+    const menuButton = document.getElementById('menuButton');
+    const menuButtonMobile = document.getElementById('menuButtonMobile');
+    const sideMenu = document.getElementById('sideMenu');
+    
+    function toggleMenu() {
+      sideMenu.classList.toggle('-translate-x-full');
+    }
+
+    [menuButton, menuButtonMobile].forEach(btn => {
+      btn.addEventListener('click', function(event) {
+        event.stopPropagation();
+        toggleMenu();
+      });
+    });
+
+    document.addEventListener('click', function(event) {
+      if (!sideMenu.contains(event.target) && !menuButton.contains(event.target) && !menuButtonMobile.contains(event.target)) {
+        if (!sideMenu.classList.contains('-translate-x-full')) {
+          sideMenu.classList.add('-translate-x-full');
+        }
+      }
+    });
+
+    document.addEventListener('keydown', function(event) {
+      if (event.key === "Escape" && !sideMenu.classList.contains('-translate-x-full')) {
+        sideMenu.classList.add('-translate-x-full');
+      }
+    });
+  });
+
+  // Formulários multi-etapas
   function nextStep(formPrefix, currentStep, nextStepNumber) {
     const currentElement = document.getElementById(formPrefix + currentStep);
     const inputs = currentElement.querySelectorAll('input, select');
@@ -418,40 +478,32 @@
     }
   }
 
-  // Modal escolha de plano
-function mostrarModal(formId) {
-  if (ASSINATURA_ATIVA === true || ASSINATURA_ATIVA === 'true') {
-    // Se o usuário tem assinatura anual, pula o modal e vai direto
-    const form = document.getElementById(formId);
-
-    const inputPlano = document.createElement('input');
-    inputPlano.type = 'hidden';
-    inputPlano.name = 'plano';
-    inputPlano.value = 'anual';
-    form.appendChild(inputPlano);
-
-    const inputEmail = document.createElement('input');
-    inputEmail.type = 'hidden';
-    inputEmail.name = 'email';
-    inputEmail.value = EMAIL_USUARIO;
-    form.appendChild(inputEmail);
-
-    form.submit();
-  } else {
-    // Caso contrário, abre o modal normalmente
-    const modal = document.getElementById('planoModal');
-    modal.classList.remove('hidden');
-    modal.dataset.formId = formId;
+  // Modal e fluxo de planos
+  function mostrarModal(formId) {
+    if (ASSINATURA_ATIVA === true || ASSINATURA_ATIVA === 'true') {
+      enviarFormulario(formId, 'anual');
+    } else if (EMAIL_USUARIO) {
+      const modal = document.getElementById('planoModal');
+      modal.classList.remove('hidden');
+      modal.dataset.formId = formId;
+    } else {
+      mostrarEmailModal(formId);
+    }
   }
-}
+
   function fecharModal() {
     document.getElementById('planoModal').classList.add('hidden');
   }
 
-  // Modal Email
-  function mostrarEmailModal() {
-    document.getElementById('emailModal').classList.remove('hidden');
+  function mostrarEmailModal(formId) {
+    const modal = document.getElementById('emailModal');
+    modal.dataset.formId = formId;
+    if (EMAIL_USUARIO) {
+      document.getElementById('userEmail').value = EMAIL_USUARIO;
+    }
+    modal.classList.remove('hidden');
   }
+
   function fecharEmailModal() {
     document.getElementById('emailModal').classList.add('hidden');
   }
@@ -459,114 +511,74 @@ function mostrarModal(formId) {
   function selecionarPlano(plano) {
     const modal = document.getElementById('planoModal');
     const formId = modal.dataset.formId;
+    
+    if (EMAIL_USUARIO) {
+      enviarFormulario(formId, plano);
+    } else {
+      fecharModal();
+      mostrarEmailModal(formId);
+    }
+  }
+
+  function enviarFormulario(formId, plano) {
     const form = document.getElementById(formId);
+    
+    // Remove inputs antigos se existirem
+    const oldPlanoInput = form.querySelector('input[name="plano"]');
+    if (oldPlanoInput) oldPlanoInput.remove();
+    
+    const oldEmailInput = form.querySelector('input[name="email"]');
+    if (oldEmailInput) oldEmailInput.remove();
 
-    const inputPlano = document.createElement('input');
-    inputPlano.type = 'hidden';
-    inputPlano.name = 'plano';
-    inputPlano.value = plano;
-    form.appendChild(inputPlano);
+    // Adiciona os novos
+    const planoInput = document.createElement('input');
+    planoInput.type = 'hidden';
+    planoInput.name = 'plano';
+    planoInput.value = plano;
+    form.appendChild(planoInput);
 
-    fecharModal();
-    mostrarEmailModal();
+    if (EMAIL_USUARIO) {
+      const emailInput = document.createElement('input');
+      emailInput.type = 'hidden';
+      emailInput.name = 'email';
+      emailInput.value = EMAIL_USUARIO;
+      form.appendChild(emailInput);
+    }
+
+    form.submit();
   }
 
   function enviarFormularioComEmail(event) {
     event.preventDefault();
-
-    const email = document.getElementById('userEmail').value;
-    const modal = document.getElementById('planoModal');
-    const formId = modal.dataset.formId;
-    const form = document.getElementById(formId);
-
-    const inputEmail = document.createElement('input');
-    inputEmail.type = 'hidden';
-    inputEmail.name = 'email';
-    inputEmail.value = email;
-    form.appendChild(inputEmail);
-
-    if (formId === 'formCorrida') {
-      form.action = '/generate';
-    } else if (formId === 'formPace') {
-      form.action = '/generatePace';
+    
+    const email = document.getElementById('userEmail').value.trim();
+    const formId = document.getElementById('emailModal').dataset.formId;
+    const plano = document.querySelector('#planoModal input[name="plano"]')?.value || 'gratuito';
+    
+    if (!email) {
+      alert('Por favor, insira um email válido');
+      return;
     }
-    form.submit();
+
+    const form = document.getElementById(formId);
+    form.action = plano === 'anual' ? '/iniciar_pagamento' : formId === 'formCorrida' ? '/generate' : '/generatePace';
+    
+    enviarFormulario(formId, plano);
   }
-</script>
 
-<!-- Modal de Login -->
-<div id="loginModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
-  <div class="bg-white p-8 rounded-lg shadow-2xl w-full max-w-md">
-    <h3 class="text-2xl font-bold text-green-600">Login</h3>
-    <form method="POST" action="/login">
-      <input type="email" name="email" placeholder="Digite seu e-mail" class="w-full mt-4 p-2 rounded-lg border-gray-300 shadow-sm focus:ring-green-600 focus:border-green-600" required>
-      <button type="submit" class="mt-6 w-full bg-green-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-green-700 transition">
-        Entrar
-      </button>
-    </form>
-    <button onclick="fecharLoginModal()" class="mt-4 w-full bg-gray-300 text-gray-700 font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-gray-400 transition">
-      Fechar
-    </button>
-  </div>
-</div>
-
-<script>
+  // Login Modal
   function abrirLoginModal() {
     document.getElementById('loginModal').classList.remove('hidden');
   }
+
   function fecharLoginModal() {
     document.getElementById('loginModal').classList.add('hidden');
   }
-</script>
 
-
-
-<!-- NOVO SCRIPT DO MENU AQUI -->
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-  const menuButton = document.getElementById('menuButton');
-  const sideMenu = document.getElementById('sideMenu');
-  
-  function toggleMenu() {
-    if (sideMenu.classList.contains('-translate-x-full')) {
-      sideMenu.classList.remove('-translate-x-full');
-      sideMenu.classList.add('translate-x-0');
-    } else {
-      sideMenu.classList.remove('translate-x-0');
-      sideMenu.classList.add('-translate-x-full');
-    }
-  }
-
-  menuButton.addEventListener('click', function(event) {
-    event.stopPropagation();
-    toggleMenu();
-  });
-
-  document.addEventListener('click', function(event) {
-    if (!sideMenu.contains(event.target) && !menuButton.contains(event.target)) {
-      if (!sideMenu.classList.contains('-translate-x-full')) {
-        sideMenu.classList.remove('translate-x-0');
-        sideMenu.classList.add('-translate-x-full');
-      }
-    }
-  });
-
-  document.addEventListener('keydown', function(event) {
-    if (event.key === "Escape") {
-      if (!sideMenu.classList.contains('-translate-x-full')) {
-        sideMenu.classList.remove('translate-x-0');
-        sideMenu.classList.add('-translate-x-full');
-      }
-    }
-  });
-});
-</script>
-
-<script>
+  // Calendário de Corridas
   function formatarData(dataString) {
     const partes = dataString.split('/');
     if (partes.length === 3) {
-      // Converte "dd/mm/yyyy" para "yyyy-mm-dd"
       const [dia, mes, ano] = partes;
       return new Date(`${ano}-${mes}-${dia}`).toLocaleDateString('pt-BR', {
         day: '2-digit',
@@ -601,7 +613,7 @@ document.addEventListener('DOMContentLoaded', function() {
     try {
       const response = await fetch(csvUrl);
       const csvText = await response.text();
-      const linhas = csvText.trim().split('\n').slice(1); // Remove cabeçalho
+      const linhas = csvText.trim().split('\n').slice(1);
 
       const eventos = linhas
         .map(row => {
@@ -667,8 +679,6 @@ document.addEventListener('DOMContentLoaded', function() {
     modal.classList.add('hidden');
   }
 </script>
-
-
 
 </body>
 </html>

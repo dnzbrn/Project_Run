@@ -188,47 +188,59 @@ def calcular_semanas(tempo_melhoria):
 def registrar_geracao(email, plano):
     try:
         hoje = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        usuario = db.execute(
-            text("SELECT * FROM usuarios WHERE email = :email"),
-            {"email": email}
-        ).fetchone()
+        
+        with engine.begin() as conn:
+            # Busca ou cria usuário
+            usuario = conn.execute(
+                text("SELECT id, plano FROM usuarios WHERE email = :email"),
+                {"email": email}
+            ).fetchone()
 
-        if not usuario:
-            # Novo usuário - sempre gratuito na primeira geração
-            result = db.execute(
+            if not usuario:
+                # Novo usuário - sempre gratuito na primeira geração
+                result = conn.execute(
+                    text("""
+                        INSERT INTO usuarios 
+                        (email, plano, data_inscricao, ultima_geracao)
+                        VALUES (:email, 'gratuito', :data, :data)
+                        RETURNING id
+                    """),
+                    {"email": email, "data": hoje}
+                )
+                usuario_id = result.fetchone()[0]
+            else:
+                # Usuário existente - atualiza apenas se for upgrade
+                if plano == "anual" and usuario.plano != "anual":
+                    conn.execute(
+                        text("UPDATE usuarios SET plano = 'anual' WHERE email = :email"),
+                        {"email": email}
+                    )
+                usuario_id = usuario.id
+
+            # Registra a geração
+            conn.execute(
                 text("""
-                    INSERT INTO usuarios (email, plano, data_inscricao, ultima_geracao)
-                    VALUES (:email, 'gratuito', :data_inscricao, :ultima_geracao)
-                    RETURNING id
+                    INSERT INTO geracoes 
+                    (usuario_id, data_geracao, tipo_plano)
+                    VALUES (:usuario_id, :data, :plano)
                 """),
-                {"email": email, "data_inscricao": hoje, "ultima_geracao": hoje}
+                {"usuario_id": usuario_id, "data": hoje, "plano": plano}
             )
-            usuario_id = result.fetchone()[0]
-        else:
-            # Usuário existente - atualiza plano apenas se for upgrade para anual
-            plano_update = plano if plano == "anual" else usuario.plano
-            db.execute(
+
+            # Atualiza última geração
+            conn.execute(
                 text("""
                     UPDATE usuarios 
-                    SET ultima_geracao = :ultima_geracao, 
-                        plano = :plano 
-                    WHERE email = :email
+                    SET ultima_geracao = :data 
+                    WHERE id = :usuario_id
                 """),
-                {"ultima_geracao": hoje, "email": email, "plano": plano_update}
+                {"usuario_id": usuario_id, "data": hoje}
             )
-            usuario_id = usuario.id
-
-        db.execute(
-            text("""
-                INSERT INTO geracoes (usuario_id, data_geracao, tipo_plano)
-                VALUES (:usuario_id, :data_geracao, :tipo_plano)
-            """),
-            {"usuario_id": usuario_id, "data_geracao": hoje, "tipo_plano": plano}
-        )
-        db.commit()
+            
         return True
+        
     except Exception as e:
-        logging.error(f"Erro ao registrar geração: {e}")
+        logging.error(f"Erro ao registrar geração: {str(e)}", exc_info=True)
         db.rollback()
         return False
 
@@ -376,18 +388,50 @@ def blog():
 @limiter.limit("100 per hour")
 def seutreino():
     try:
-        return render_template("seutreino.html")
+        # Verifica se o usuário está logado
+        if "email" not in session:
+            return redirect(url_for("landing"))
+            
+        email = session["email"]
+        assinatura_ativa = session.get("assinatura_ativa", False)
+        
+        # Busca informações do usuário no banco
+        usuario = db.execute(
+            text("""
+                SELECT u.*, 
+                (SELECT status FROM assinaturas 
+                 WHERE usuario_id = u.id 
+                 ORDER BY id DESC LIMIT 1) as status_assinatura
+                FROM usuarios u 
+                WHERE email = :email
+            """),
+            {"email": email}
+        ).fetchone()
+
+        # Atualiza status da assinatura na sessão
+        if usuario and usuario.status_assinatura == "active":
+            session["assinatura_ativa"] = True
+            assinatura_ativa = True
+
+        # Calcula dias desde última geração (para plano gratuito)
+        dias_desde_ultima = 0
+        if usuario and usuario.ultima_geracao:
+            ultima = datetime.strptime(str(usuario.ultima_geracao), "%Y-%m-%d %H:%M:%S")
+            dias_desde_ultima = (datetime.now() - ultima).days
+
+        return render_template(
+            "seutreino.html",
+            email=email,
+            assinatura_ativa=assinatura_ativa,
+            dias_desde_ultima=dias_desde_ultima,
+            pode_gerar_gratuito=(dias_desde_ultima >= 30) if not assinatura_ativa else True,
+            nome=usuario.nome if usuario and hasattr(usuario, 'nome') else ""
+        )
+        
     except Exception as e:
-        logging.error(f"Erro ao renderizar seutreino.html: {e}")
-        return render_template_string("""
-            <!DOCTYPE html>
-            <html>
-            <body>
-                <h1>Criar Seu Treino</h1>
-                <p>Formulário de criação de treino</p>
-            </body>
-            </html>
-        """), 200
+        logging.error(f"Erro na rota /seutreino: {str(e)}", exc_info=True)
+        session.clear()
+        return redirect(url_for("landing"))
 
 @app.route("/sucesso")
 @limiter.limit("100 per hour")
@@ -524,62 +568,69 @@ def artigos(slug):
 @limiter.limit("10 per hour")
 @async_route
 async def generate():
-    dados_usuario = request.form
-    required_fields = ["email", "objetivo", "tempo_melhoria", "nivel", "dias", "tempo"]
+    try:
+        # Verificação de autenticação
+        if "email" not in session:
+            return redirect(url_for("landing"))
+            
+        email = session["email"]
+        assinatura_ativa = session.get("assinatura_ativa", False)
+        plano = "anual" if assinatura_ativa else "gratuito"
 
-    if not all(field in dados_usuario for field in required_fields):
-        return "Dados do formulário incompletos.", 400
+        # Verificação de permissão
+        if not pode_gerar_plano(email, plano):
+            if not assinatura_ativa:
+                return redirect(url_for("iniciar_pagamento", email=email, upgrade=True))
+            return render_template("erro.html", mensagem="Você não tem permissão para gerar este plano"), 403
 
-    email = dados_usuario["email"]
-    plano_selecionado = dados_usuario.get("plano", "gratuito")
-    session["email"] = email
+        # Validação dos dados do formulário
+        dados = request.form
+        required_fields = ["objetivo", "tempo_melhoria", "nivel", "dias", "tempo"]
+        if not all(field in dados for field in required_fields):
+            return render_template("erro.html", mensagem="Dados do formulário incompletos"), 400
 
-    # Verificação rigorosa do plano selecionado vs permissões
-    if not pode_gerar_plano(email, plano_selecionado):
-        if plano_selecionado == "anual":
-            return redirect(url_for("iniciar_pagamento", email=email))
-        return "Você já gerou um plano gratuito este mês. Atualize para o plano anual para gerar mais planos.", 400
+        # Cálculo de semanas e geração do prompt
+        semanas = calcular_semanas(dados['tempo_melhoria'])
+        
+        prompt = f"""
+        Você é um treinador de corrida profissional. Crie um plano detalhado com base nestes dados:
+        
+        Objetivo: {dados['objetivo']}
+        Tempo para melhoria: {dados['tempo_melhoria']}
+        Nível atual: {dados['nivel']}
+        Dias disponíveis por semana: {dados['dias']}
+        Tempo disponível por treino: {dados['tempo']} minutos
+        Duração do plano: {semanas} semanas
+        
+        Estruture o plano em semanas, incluindo:
+        - Aquecimento específico
+        - Parte principal com distâncias/ritmos
+        - Desaquecimento
+        - Progressão gradual
+        - Semana final com teste do objetivo
+        """
+        
+        # Chamada à API da OpenAI
+        plano_gerado = await gerar_plano_openai(prompt, semanas)
+        
+        # Registro no banco de dados
+        if not registrar_geracao(email, plano):
+            logging.error(f"Falha ao registrar geração para {email}")
+            return render_template("erro.html", mensagem="Erro ao salvar seu plano"), 500
 
-    semanas = calcular_semanas(dados_usuario['tempo_melhoria'])
-
-    prompt = f"""
-Você é um treinador de corrida profissional.
-
-Crie um plano de corrida para que o usuário atinja o objetivo: {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']}.
-
-✅ Dados do usuário:
-- Nível: {dados_usuario['nivel']}
-- Dias disponíveis por semana: {dados_usuario['dias']}
-- Tempo disponível por treino: {dados_usuario['tempo']} minutos
-- Duração do plano: {semanas} semanas
-
-✅ Instruções:
-- Se o plano tiver **até 12 semanas**, **detalhe TODAS as semanas separadamente** (não pule, não agrupe, não use "...").
-- Se o plano tiver **mais de 12 semanas**, **detalhe até a semana 8** e depois **agrupá-las** (ex.: "Semanas 9–12: continuar aumentando volume e intensidade").
-- Cada treino deve conter:
-  - Aquecimento (com tempo e atividade sugerida, ex.: "10 min de caminhada rápida").
-  - Parte principal (distância e ritmo indicados, ex.: "4x800m a 5:30/km").
-  - Desaquecimento (ex.: "5 min de caminhada leve").
-- Na **semana final (semana do objetivo)**, criar um treino especial para tentar atingir o objetivo, sugerindo ritmo (ex.: "Correr 5km a 6:00/km").
-- Escreva dicas finais de recuperação e motivação no final.
-
-✅ Formato de saída:
-- Título principal: **Plano de Corrida para {dados_usuario['objetivo']}**
-- Informações do usuário
-- Semana a semana (ex.: Semana 1, Semana 2, etc.)
-- Semana final (objetivo)
-- Dicas finais
-"""
-
-    plano_gerado = await gerar_plano_openai(prompt, semanas)
-
-    if registrar_geracao(email, plano_selecionado):
-        session["titulo"] = f"Plano de Corrida: {dados_usuario['objetivo']}"
-        session["plano"] = plano_selecionado
-        session["plano_gerado"] = "Este plano é gerado automaticamente. Consulte um profissional para ajustes.\n\n" + plano_gerado
+        # Prepara dados para a sessão e resultado
+        session["titulo"] = f"Plano de Treino - {dados['objetivo']}"
+        session["plano_gerado"] = f"""
+        Plano gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}
+        =====================================
+        {plano_gerado}
+        """
+        
         return redirect(url_for("resultado"))
-    else:
-        return "Erro ao registrar seu plano. Tente novamente.", 500
+        
+    except Exception as e:
+        logging.error(f"Erro fatal em /generate: {str(e)}", exc_info=True)
+        return render_template("erro.html", mensagem="Ocorreu um erro interno"), 500
 
 
 
@@ -588,62 +639,69 @@ Crie um plano de corrida para que o usuário atinja o objetivo: {dados_usuario['
 @limiter.limit("10 per hour")
 @async_route
 async def generatePace():
-    dados_usuario = request.form
-    required_fields = ["email", "objetivo", "tempo_melhoria", "nivel", "dias", "tempo"]
+    try:
+        # Verificação de autenticação
+        if "email" not in session:
+            return redirect(url_for("landing"))
+            
+        email = session["email"]
+        assinatura_ativa = session.get("assinatura_ativa", False)
+        plano = "anual" if assinatura_ativa else "gratuito"
 
-    if not all(field in dados_usuario for field in required_fields):
-        return "Dados do formulário incompletos.", 400
+        # Verificação de permissão
+        if not pode_gerar_plano(email, plano):
+            if not assinatura_ativa:
+                return redirect(url_for("iniciar_pagamento", email=email, upgrade=True))
+            return render_template("erro.html", mensagem="Você não tem permissão para gerar este plano"), 403
 
-    email = dados_usuario["email"]
-    plano_selecionado = dados_usuario.get("plano", "gratuito")
-    session["email"] = email
+        # Validação dos dados do formulário
+        dados = request.form
+        required_fields = ["objetivo", "tempo_melhoria", "nivel", "dias", "tempo"]
+        if not all(field in dados for field in required_fields):
+            return render_template("erro.html", mensagem="Dados do formulário incompletos"), 400
 
-    # Verificação rigorosa do plano selecionado vs permissões
-    if not pode_gerar_plano(email, plano_selecionado):
-        if plano_selecionado == "anual":
-            return redirect(url_for("iniciar_pagamento", email=email))
-        return "Você já gerou um plano gratuito este mês. Atualize para o plano anual para gerar mais planos.", 400
+        # Cálculo de semanas e geração do prompt
+        semanas = calcular_semanas(dados['tempo_melhoria'])
+        
+        prompt = f"""
+        Você é um treinador de corrida especializado em melhoria de pace. Crie um plano detalhado com foco em ritmo com base nestes dados:
+        
+        Objetivo: {dados['objetivo']}
+        Tempo para melhoria: {dados['tempo_melhoria']}
+        Nível atual: {dados['nivel']}
+        Dias disponíveis por semana: {dados['dias']}
+        Tempo disponível por treino: {dados['tempo']} minutos
+        Duração do plano: {semanas} semanas
+        
+        Estruture o plano com:
+        - Treinos intervalados específicos
+        - Progressão de ritmo semana a semana
+        - Testes de pace regulares
+        - Aquecimentos e desaquecimentos adequados
+        - Semana final com teste do pace alvo
+        """
+        
+        # Chamada à API da OpenAI
+        plano_gerado = await gerar_plano_openai(prompt, semanas)
+        
+        # Registro no banco de dados
+        if not registrar_geracao(email, plano):
+            logging.error(f"Falha ao registrar geração de pace para {email}")
+            return render_template("erro.html", mensagem="Erro ao salvar seu plano de pace"), 500
 
-    semanas = calcular_semanas(dados_usuario['tempo_melhoria'])
-
-    prompt = f"""
-Você é um treinador de corrida especializado em melhoria de pace.
-
-Crie um plano para que o usuário alcance o objetivo: {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']}.
-
-✅ Dados do usuário:
-- Nível: {dados_usuario['nivel']}
-- Dias disponíveis por semana: {dados_usuario['dias']}
-- Tempo disponível por treino: {dados_usuario['tempo']} minutos
-- Tipo de treino: Foco em pace (ritmo)
-- Duração do plano: {semanas} semanas
-
-✅ Instruções:
-- Se o plano tiver **até 12 semanas**, **detalhar todas as semanas separadamente** (sem pular, sem usar "..." ou "(detalhar depois)").
-- Se o plano tiver **mais de 12 semanas**, **detalhar até a semana 8** e depois **agrupar as demais** (ex.: "Semanas 9–12: foco em aumento progressivo de distância e redução gradual do pace").
-- Em cada treino:
-  - Aquecimento inicial (ex.: 5-10 minutos de caminhada rápida ou trote leve).
-  - Parte principal com distâncias e ritmos claros (ex.: "6x400m a 5:30/km").
-  - Desaquecimento (ex.: 5-10 minutos de caminhada leve).
-- Na **semana final**, montar um treino especial tentando atingir o ritmo objetivo para a distância desejada, indicando ritmo sugerido (ex.: "Correr 5km a 5:00/km").
-
-✅ Formato de saída:
-- Título principal: **Plano de Treino para Melhorar Pace: {dados_usuario['objetivo']}**
-- Informações iniciais do usuário
-- Semana a semana detalhada
-- Semana final (treino do objetivo)
-- Dicas finais de recuperação e motivação
-"""
-
-    plano_gerado = await gerar_plano_openai(prompt, semanas)
-
-    if registrar_geracao(email, plano_selecionado):
-        session["titulo"] = f"Plano de Pace: {dados_usuario['objetivo']}"
-        session["plano"] = plano_selecionado
-        session["plano_gerado"] = "Este plano é gerado automaticamente. Consulte um profissional para ajustes.\n\n" + plano_gerado
+        # Prepara dados para a sessão e resultado
+        session["titulo"] = f"Plano de Pace - {dados['objetivo']}"
+        session["plano_gerado"] = f"""
+        Plano de pace gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}
+        =====================================
+        {plano_gerado}
+        """
+        
         return redirect(url_for("resultado"))
-    else:
-        return "Erro ao registrar seu plano. Tente novamente.", 500
+        
+    except Exception as e:
+        logging.error(f"Erro fatal em /generatePace: {str(e)}", exc_info=True)
+        return render_template("erro.html", mensagem="Ocorreu um erro ao gerar seu plano de pace"), 500
 
 
 
@@ -766,74 +824,88 @@ def logout():
 @app.route("/iniciar_pagamento", methods=["GET", "POST"])
 @limiter.limit("5 per hour")
 def iniciar_pagamento():
-    dados_usuario = request.form if request.method == "POST" else request.args
-
-    if "email" not in dados_usuario:
-        return "Email não fornecido.", 400
-
-    email = dados_usuario["email"]
-
-    session["email"] = email	
-
     try:
-        # Registrar tentativa de pagamento
-        db.execute(
-            text("""
-                INSERT INTO tentativas_pagamento (email, data_tentativa) 
-                VALUES (:email, NOW())
-            """),
+        # Obtém email da sessão ou dos parâmetros
+        email = session.get("email") or request.args.get("email")
+        upgrade = request.args.get("upgrade", "").lower() == "true"
+        
+        if not email:
+            return redirect(url_for("landing"))
+
+        # Verifica se o usuário existe
+        usuario = db.execute(
+            text("SELECT id, nome FROM usuarios WHERE email = :email"),
             {"email": email}
-        )
-        db.commit()
-    except Exception as e:
-        logging.error(f"Erro ao registrar tentativa de pagamento: {e}")
-        db.rollback()
+        ).fetchone()
+        
+        nome = usuario.nome if usuario else "Cliente"
 
-    # Criar preferência de pagamento no Mercado Pago
-    payload = {
-        "items": [{
-            "title": "Plano Anual de Treino - TreinoRun",
-            "description": "Acesso ilimitado por 1 ano à geração de planos de treino personalizados",
-            "quantity": 1,
-            "unit_price": 59.9,
-            "currency_id": "BRL",
-        }],
-        "payer": {
-            "email": email,
-            "name": dados_usuario.get("nome", "Cliente")
-        },
-        "back_urls": {
-            "success": url_for("sucesso", _external=True),
-            "failure": url_for("erro", _external=True),
-            "pending": url_for("pendente", _external=True)
-        },
-        "auto_return": "approved",
-        "notification_url": url_for("mercadopago_webhook", _external=True),
-        "external_reference": email,
-        "statement_descriptor": "TREINORUN"
-    }
+        # Registra a tentativa de pagamento
+        try:
+            db.execute(
+                text("""
+                    INSERT INTO tentativas_pagamento 
+                    (email, data_tentativa, tipo) 
+                    VALUES (:email, NOW(), :tipo)
+                """),
+                {"email": email, "tipo": "upgrade" if upgrade else "nova"}
+            )
+            db.commit()
+        except Exception as e:
+            logging.error(f"Erro ao registrar tentativa: {str(e)}")
+            db.rollback()
 
-    try:
+        # Configura a preferência de pagamento
+        payload = {
+            "items": [{
+                "title": "Plano Anual TreinoRun",
+                "description": "Planos ilimitados por 1 ano" + (" (Upgrade)" if upgrade else ""),
+                "quantity": 1,
+                "unit_price": 59.90,
+                "currency_id": "BRL"
+            }],
+            "payer": {
+                "email": email,
+                "name": nome
+            },
+            "back_urls": {
+                "success": url_for("sucesso", _external=True),
+                "failure": url_for("erro", _external=True),
+                "pending": url_for("pendente", _external=True)
+            },
+            "auto_return": "approved",
+            "notification_url": url_for("mercadopago_webhook", _external=True),
+            "external_reference": email,
+            "statement_descriptor": "TREINORUN"
+        }
+
+        # Adiciona mensagem para upgrades
+        if upgrade:
+            payload["items"][0]["description"] += " - Upgrade de Plano Gratuito"
+
+        # Envia para o Mercado Pago
+        headers = {
+            "Authorization": f"Bearer {os.getenv('MERCADO_PAGO_ACCESS_TOKEN')}",
+            "Content-Type": "application/json"
+        }
+        
         response = requests.post(
             "https://api.mercadopago.com/checkout/preferences",
-            headers={
-                "Authorization": f"Bearer {os.getenv('MERCADO_PAGO_ACCESS_TOKEN')}",
-                "Content-Type": "application/json",
-            },
+            headers=headers,
             json=payload,
             timeout=10
         )
         response.raise_for_status()
         
-        # Log da resposta do Mercado Pago
-        logging.info(f"Resposta do Mercado Pago: {response.json()}")
-        
         return redirect(response.json()["init_point"])
+        
     except requests.exceptions.RequestException as e:
-        logging.error(f"Erro ao criar preferência de pagamento: {str(e)}")
-        if hasattr(e, 'response') and e.response is not None:
-            logging.error(f"Resposta do Mercado Pago: {e.response.text}")
-        return "Erro ao processar o pagamento. Tente novamente mais tarde.", 500
+        logging.error(f"Erro MercadoPago: {str(e)}")
+        return render_template("erro.html", mensagem="Erro ao conectar com o gateway de pagamento"), 500
+        
+    except Exception as e:
+        logging.error(f"Erro em iniciar_pagamento: {str(e)}", exc_info=True)
+        return render_template("erro.html", mensagem="Erro ao processar pagamento"), 500
 
 @app.route("/webhook/mercadopago", methods=["POST"])
 @limiter.limit("100 per day")
