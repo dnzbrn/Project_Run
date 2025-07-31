@@ -127,11 +127,13 @@ def pode_gerar_plano(email, plano):
             {"email": email}
         ).fetchone()
 
+        # Usuário não existe - só pode gerar se for plano gratuito (primeira vez)
         if not usuario:
-            return False if plano == "anual" else True
+            return plano == "gratuito"
 
+        # Verificação para plano anual
         if plano == "anual":
-            # Primeiro tenta verificar na tabela assinaturas
+            # Verifica na tabela assinaturas
             assinatura = db.execute(
                 text("""
                     SELECT status FROM assinaturas 
@@ -141,20 +143,19 @@ def pode_gerar_plano(email, plano):
                 {"usuario_id": usuario.id}
             ).fetchone()
 
-            if assinatura and assinatura.status == "active":
+            # Se tem assinatura ativa ou está marcado como anual no cadastro
+            if (assinatura and assinatura.status == "active") or usuario.plano == "anual":
                 return True
-
-            # Se não tiver na assinatura, verifica se no cadastro consta como plano anual
-            if usuario.plano == "anual":
-                return True
-
             return False
 
+        # Verificação para plano gratuito
         elif plano == "gratuito":
-            if usuario.ultima_geracao:
-                ultima = datetime.strptime(str(usuario.ultima_geracao), "%Y-%m-%d %H:%M:%S")
-                return (datetime.now() - ultima).days >= 30
-            return True
+            # Se nunca gerou ou a última geração foi há mais de 30 dias
+            if not usuario.ultima_geracao:
+                return True
+                
+            ultima = datetime.strptime(str(usuario.ultima_geracao), "%Y-%m-%d %H:%M:%S")
+            return (datetime.now() - ultima).days >= 30
 
         return False
 
@@ -193,25 +194,36 @@ def registrar_geracao(email, plano):
         ).fetchone()
 
         if not usuario:
+            # Novo usuário - sempre gratuito na primeira geração
             result = db.execute(
                 text("""
                     INSERT INTO usuarios (email, plano, data_inscricao, ultima_geracao)
-                    VALUES (:email, :plano, :data_inscricao, :ultima_geracao)
+                    VALUES (:email, 'gratuito', :data_inscricao, :ultima_geracao)
                     RETURNING id
                 """),
-                {"email": email, "plano": plano, "data_inscricao": hoje, "ultima_geracao": hoje},
+                {"email": email, "data_inscricao": hoje, "ultima_geracao": hoje}
             )
             usuario_id = result.fetchone()[0]
         else:
+            # Usuário existente - atualiza plano apenas se for upgrade para anual
+            plano_update = plano if plano == "anual" else usuario.plano
             db.execute(
-                text("UPDATE usuarios SET ultima_geracao = :ultima_geracao, plano = :plano WHERE email = :email"),
-                {"ultima_geracao": hoje, "email": email, "plano": plano},
+                text("""
+                    UPDATE usuarios 
+                    SET ultima_geracao = :ultima_geracao, 
+                        plano = :plano 
+                    WHERE email = :email
+                """),
+                {"ultima_geracao": hoje, "email": email, "plano": plano_update}
             )
             usuario_id = usuario.id
 
         db.execute(
-            text("INSERT INTO geracoes (usuario_id, data_geracao) VALUES (:usuario_id, :data_geracao)"),
-            {"usuario_id": usuario_id, "data_geracao": hoje},
+            text("""
+                INSERT INTO geracoes (usuario_id, data_geracao, tipo_plano)
+                VALUES (:usuario_id, :data_geracao, :tipo_plano)
+            """),
+            {"usuario_id": usuario_id, "data_geracao": hoje, "tipo_plano": plano}
         )
         db.commit()
         return True
@@ -519,17 +531,18 @@ async def generate():
         return "Dados do formulário incompletos.", 400
 
     email = dados_usuario["email"]
-    plano = session.get("plano", dados_usuario.get("plano", "gratuito"))
+    plano_selecionado = dados_usuario.get("plano", "gratuito")
     session["email"] = email
 
-    if not pode_gerar_plano(email, plano):
-        if plano == "anual":
+    # Verificação rigorosa do plano selecionado vs permissões
+    if not pode_gerar_plano(email, plano_selecionado):
+        if plano_selecionado == "anual":
             return redirect(url_for("iniciar_pagamento", email=email))
         return "Você já gerou um plano gratuito este mês. Atualize para o plano anual para gerar mais planos.", 400
 
     semanas = calcular_semanas(dados_usuario['tempo_melhoria'])
 
-    prompt = prompt = f"""
+    prompt = f"""
 Você é um treinador de corrida profissional.
 
 Crie um plano de corrida para que o usuário atinja o objetivo: {dados_usuario['objetivo']} em {dados_usuario['tempo_melhoria']}.
@@ -556,18 +569,13 @@ Crie um plano de corrida para que o usuário atinja o objetivo: {dados_usuario['
 - Semana a semana (ex.: Semana 1, Semana 2, etc.)
 - Semana final (objetivo)
 - Dicas finais
-
-✅ Estilo de escrita:
-- Profissional, claro e motivador.
-- Nunca usar comandos internos ou instruções técnicas.
 """
 
-    # 🔥 Faltava isso:
     plano_gerado = await gerar_plano_openai(prompt, semanas)
 
-    if registrar_geracao(email, plano):
+    if registrar_geracao(email, plano_selecionado):
         session["titulo"] = f"Plano de Corrida: {dados_usuario['objetivo']}"
-        session["plano"] = plano
+        session["plano"] = plano_selecionado
         session["plano_gerado"] = "Este plano é gerado automaticamente. Consulte um profissional para ajustes.\n\n" + plano_gerado
         return redirect(url_for("resultado"))
     else:
@@ -587,11 +595,12 @@ async def generatePace():
         return "Dados do formulário incompletos.", 400
 
     email = dados_usuario["email"]
-    plano = session.get("plano", dados_usuario.get("plano", "gratuito"))
+    plano_selecionado = dados_usuario.get("plano", "gratuito")
     session["email"] = email
 
-    if not pode_gerar_plano(email, plano):
-        if plano == "anual":
+    # Verificação rigorosa do plano selecionado vs permissões
+    if not pode_gerar_plano(email, plano_selecionado):
+        if plano_selecionado == "anual":
             return redirect(url_for("iniciar_pagamento", email=email))
         return "Você já gerou um plano gratuito este mês. Atualize para o plano anual para gerar mais planos.", 400
 
@@ -624,18 +633,13 @@ Crie um plano para que o usuário alcance o objetivo: {dados_usuario['objetivo']
 - Semana a semana detalhada
 - Semana final (treino do objetivo)
 - Dicas finais de recuperação e motivação
-
-✅ Estilo de escrita:
-- Profissional, amigável e motivador.
-- Não usar comandos internos ou instruções técnicas.
 """
 
-    # 🔥 Faltava isso também no seu código:
     plano_gerado = await gerar_plano_openai(prompt, semanas)
 
-    if registrar_geracao(email, plano):
+    if registrar_geracao(email, plano_selecionado):
         session["titulo"] = f"Plano de Pace: {dados_usuario['objetivo']}"
-        session["plano"] = plano
+        session["plano"] = plano_selecionado
         session["plano_gerado"] = "Este plano é gerado automaticamente. Consulte um profissional para ajustes.\n\n" + plano_gerado
         return redirect(url_for("resultado"))
     else:
